@@ -32,6 +32,7 @@ Restart ComfyUI. No extra dependencies.
 - Inference only
 
 ## Quick start
+![workflow](docs/images/workflow.png)
 
 ```
                           ┌──► artist_pack ──► AnimaArtistCrossAttn ──► MODEL ──► KSampler
