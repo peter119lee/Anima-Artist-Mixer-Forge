@@ -1,0 +1,569 @@
+{
+  "id": "0a1d14fb-5e7d-4982-b58d-3e2ebbbed0f0",
+  "revision": 0,
+  "last_node_id": 79,
+  "last_link_id": 179,
+  "nodes": [
+    {
+      "id": 8,
+      "type": "UNETLoader",
+      "pos": [
+        958.7269529611992,
+        714.522756505489
+      ],
+      "size": [
+        307.5999755859375,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            173
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.11.0",
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "anima_baseV10.safetensors",
+        "default"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "CLIPLoader",
+      "pos": [
+        973.3004698919146,
+        861.4717301100203
+      ],
+      "size": [
+        270,
+        106
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            176,
+            179
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.11.0",
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "qwen_3_06b_base.safetensors",
+        "stable_diffusion",
+        "default"
+      ]
+    },
+    {
+      "id": 1,
+      "type": "VAELoader",
+      "pos": [
+        977.0603742950271,
+        1020.9855153282839
+      ],
+      "size": [
+        270,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.21.1",
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "qwen_image_vae.safetensors"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "CLIPTextEncode",
+      "pos": [
+        1393.7327118774401,
+        951.3606450813672
+      ],
+      "size": [
+        402.75460950201375,
+        140.89907424699106
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 176
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            20
+          ]
+        }
+      ],
+      "title": "CLIP Text Encode (Negative Prompt)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.65",
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia,"
+      ]
+    },
+    {
+      "id": 78,
+      "type": "AnimaArtistPack",
+      "pos": [
+        1397.3580523866947,
+        673.5484830328068
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 179
+        }
+      ],
+      "outputs": [
+        {
+          "name": "artist_pack",
+          "type": "ANIMA_PACK",
+          "links": [
+            162
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AnimaArtistPack"
+      },
+      "widgets_values": [
+        "((@ningen mame))\n(@mignon)\n(@ciloranko)\n(((@uof)))",
+        "masterpiece, best quality, absurdres, newest, very aesthetic, amazing quality, highres, sensitive, ultra detailed, best anatomy, HDR, 8K, awesome, inspiring, cinematic composition, anime coloring\n\nmasterpiece, best quality. Texas from Arknights is taking a bath, sitting in a bathtub. She looks tired, with a towel draped over her face. Her head is tilted back, and she is stretching her posture in a relaxed manner."
+      ]
+    },
+    {
+      "id": 79,
+      "type": "AnimaArtistCrossAttn",
+      "pos": [
+        1830.7812000827178,
+        642.8819473402127
+      ],
+      "size": [
+        304.0279296875,
+        218
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 173
+        },
+        {
+          "name": "artist_pack",
+          "type": "ANIMA_PACK",
+          "link": 162
+        },
+        {
+          "name": "advanced_options",
+          "shape": 7,
+          "type": "ANIMA_OPTS",
+          "link": 166
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            164
+          ]
+        },
+        {
+          "name": "base_prompt",
+          "type": "CONDITIONING",
+          "links": [
+            160
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AnimaArtistCrossAttn"
+      },
+      "widgets_values": [
+        "output_avg",
+        "interpolate",
+        1,
+        true,
+        false
+      ]
+    },
+    {
+      "id": 18,
+      "type": "KSampler",
+      "pos": [
+        2167.8941329447453,
+        630.1295505037123
+      ],
+      "size": [
+        286.3216050917681,
+        278.97529301901045
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 164
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 160
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 20
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 40
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "slot_index": 0,
+          "links": [
+            39
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.40",
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        95194885463737,
+        "fixed",
+        32,
+        4.6,
+        "dpmpp_2m_sde_gpu",
+        "simple",
+        1
+      ]
+    },
+    {
+      "id": 7,
+      "type": "VAEDecode",
+      "pos": [
+        2496.892403135036,
+        718.0479801791682
+      ],
+      "size": [
+        210.37067246591369,
+        48.22396692539701
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 39
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            90
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.40",
+        "Node name for S&R": "VAEDecode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 46,
+      "type": "SaveImage",
+      "pos": [
+        2789.88335124604,
+        540.0121436519753
+      ],
+      "size": [
+        628.3398654819198,
+        474.99263644890596
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 90
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.20.1",
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "ComfyUI"
+      ]
+    },
+    {
+      "id": 75,
+      "type": "AnimaArtistOptions",
+      "pos": [
+        1444.1936079561149,
+        1235.7731347222298
+      ],
+      "size": [
+        316.7291015625,
+        178
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "advanced_options",
+          "type": "ANIMA_OPTS",
+          "links": [
+            166
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AnimaArtistOptions"
+      },
+      "widgets_values": [
+        63,
+        -1,
+        0,
+        1,
+        true,
+        ""
+      ]
+    },
+    {
+      "id": 19,
+      "type": "EmptyLatentImage",
+      "pos": [
+        982.114484193543,
+        536.1073469867009
+      ],
+      "size": [
+        270,
+        106
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            40
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.40",
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        1216,
+        832,
+        1
+      ]
+    }
+  ],
+  "links": [
+    [
+      5,
+      1,
+      0,
+      7,
+      1,
+      "VAE"
+    ],
+    [
+      20,
+      6,
+      0,
+      18,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      39,
+      18,
+      0,
+      7,
+      0,
+      "LATENT"
+    ],
+    [
+      40,
+      19,
+      0,
+      18,
+      3,
+      "LATENT"
+    ],
+    [
+      90,
+      7,
+      0,
+      46,
+      0,
+      "IMAGE"
+    ],
+    [
+      160,
+      79,
+      1,
+      18,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      162,
+      78,
+      0,
+      79,
+      1,
+      "ANIMA_PACK"
+    ],
+    [
+      164,
+      79,
+      0,
+      18,
+      0,
+      "MODEL"
+    ],
+    [
+      166,
+      75,
+      0,
+      79,
+      2,
+      "ANIMA_OPTS"
+    ],
+    [
+      173,
+      8,
+      0,
+      79,
+      0,
+      "MODEL"
+    ],
+    [
+      176,
+      4,
+      0,
+      6,
+      0,
+      "CLIP"
+    ],
+    [
+      179,
+      4,
+      0,
+      78,
+      0,
+      "CLIP"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6934334949441411,
+      "offset": [
+        -785.9116061011232,
+        -107.70962684208433
+      ]
+    },
+    "qgn_navigation_groups": [],
+    "qgn_locked": false,
+    "frontendVersion": "1.43.18"
+  },
+  "version": 0.4
+}
