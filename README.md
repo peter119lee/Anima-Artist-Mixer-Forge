@@ -2,7 +2,7 @@
 
 A ComfyUI custom node that enables **multi-artist mixing** for the Anima model by hooking into its cross-attention layers.
 
-![surtr](ComfyUI_01092_.png)
+![surtr](docs/images/ComfyUI_01092_.png)
 ## What it does
 
 Anima uses an LLM as its text encoder. When multiple artist tags are stacked in a single prompt, the LLM's contextualization causes them to interfere with each other, producing a conditioning that resembles neither artist clearly. This node encodes each artist independently and mixes them at the model's cross-attention layer, sidestepping the interference at the prompt-encoding stage.
