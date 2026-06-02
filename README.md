@@ -9,7 +9,7 @@ Anima uses an LLM as its text encoder. When multiple artist tags are stacked in 
 
 The bundled `AnimaArtistPack` node provides a one-shot experience: write your artist list (separated by commas or newlines) in one text box, your main prompt in another, and the node handles splitting, encoding, and packaging automatically.
 
-The current release (v25) adds one-click presets, an in-UI inspector, deterministic low-rank mixing, safer explicit weights, layered cross-seed stabilizers, CFG-style strength extrapolation, and the linear injection-layer weight syntax `::name::weight`.
+The current release adds one-click presets, an in-UI inspector, deterministic low-rank mixing, safer explicit weights, layered cross-seed stabilizers, CFG-style strength extrapolation, the linear injection-layer weight syntax `::name::weight`, per-artist layer/timing routing, and a compatibility-safe preset for workflows that also use regional or attention-patching nodes.
 
 ## Quick links
 
@@ -54,6 +54,7 @@ Restart ComfyUI. No extra dependencies.
 - Bottom text box: the main prompt (no need to repeat artist names here)
 - Wire `AnimaArtistCrossAttn`'s `base_prompt` output directly to KSampler's positive input
 - For a sane first run, connect `AnimaArtistPreset` with `preset = balanced`
+- If the workflow also uses regional prompting, Forge Couple-style routing, or other attention patchers, start with `preset = compatibility_safe`
 - When a workflow behaves strangely, connect `AnimaArtistInspector` and read the effective weights / warnings directly in ComfyUI
 
 For full parameter explanations and recommended combinations, see [docs/USAGE.md](docs/USAGE.md).
@@ -87,11 +88,12 @@ wlop, ::sakimichan::1.2, (krenz:0.7)
 - `::name::1.2` — injection-side weighting (v24+), linear and predictable, applied at cross-attention output
 - In v25, any valid `::weight` automatically disables normalization at runtime so explicit weights stay absolute
 - Per-artist layer routing is supported with `@layers`: `wlop@0-8, krenz@9-18, hiten@19-27`
+- Per-artist sampling timing is supported with `%start-end`: `wlop@0-8%0.0-0.45, krenz@9-18%0.45-0.85`
 - Anima artist tags that start with `@` are safe: `@wlop` remains the artist name; only a final numeric suffix like `@0-8` is treated as layer routing
 
 ## Compatibility notes
 
-This node wraps Anima cross-attention. Other nodes that also patch attention, regional prompts, Forge Couple-style routing, or model forward wrappers can change the same execution path. If the artist effect disappears or becomes very weak, first try `combine_mode = concat`, disable cache-heavy stabilizers, or reduce other attention-patching nodes in the same workflow. Use `AnimaArtistInspector` to confirm the parsed artists, weights, layer routes, and effective normalize state.
+This node wraps Anima cross-attention. Other nodes that also patch attention, regional prompts, Forge Couple-style routing, or model forward wrappers can change the same execution path. If the artist effect disappears or becomes very weak, use `AnimaArtistPreset(preset = compatibility_safe)` first. It forces the tolerant `concat + concat_with_base` path and disables cache-heavy stabilizers. Use `AnimaArtistInspector` to confirm parsed artists, weights, layer routes, timing routes, block map, and effective normalize state.
 
 ## Cross-seed stability
 

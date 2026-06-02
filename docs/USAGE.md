@@ -10,6 +10,8 @@ This README documents the **v25 architecture**, which adds one-click presets, an
 
 v25.1 also adds per-artist layer routing, matching the original repository's first public feature request: different artists can now be injected into different DiT block ranges from the same artist chain.
 
+v25.2 adds per-artist sampling timing, a `compatibility_safe` preset, Inspector block maps, and runtime warnings for suspicious cross-attention / model-wrapper conflicts.
+
 ## What problem it solves
 
 Anima uses an LLM as its text encoder (unlike SDXL's CLIP). LLM encoders are heavily **contextualized** — every token's embedding fuses semantics from surrounding tokens. This has a direct consequence:
@@ -116,8 +118,9 @@ Key points:
 - Connect `AnimaArtistCrossAttn`'s `base_prompt` output directly to KSampler's positive input
 - Encode the negative prompt independently with `CLIPTextEncode`; it does not go through this plugin
 - Start with `AnimaArtistPreset(preset=balanced)` unless you already know which advanced settings you want
+- Use `AnimaArtistPreset(preset=compatibility_safe)` first when combining with regional prompts, Forge Couple-style routing, attention masks, or other cross-attention patch nodes
 - Advanced controls (layer range, sampling-step range, stabilizers) come via the optional `AnimaArtistOptions` node
-- Use `AnimaArtistInspector` to show the actual effective weights, preset settings, and configuration warnings inside ComfyUI
+- Use `AnimaArtistInspector` to show the actual effective weights, block map, preset settings, and configuration warnings inside ComfyUI
 
 ## Parameters
 
@@ -126,7 +129,7 @@ Key points:
 | Parameter | Type | Description |
 |---|---|---|
 | `clip` | CLIP | Anima-compatible CLIP |
-| `artist_chain` | STRING (multiline) | Artist chain. Comma or newline separated. Supports both CLIP weighting `(wlop:1.2)` and the new injection-layer weight `::wlop::1.5`, including stacking |
+| `artist_chain` | STRING (multiline) | Artist chain. Comma or newline separated. Supports CLIP weighting `(wlop:1.2)`, injection-layer weight `::wlop::1.5`, per-artist layer routing `@0-8`, and per-artist timing `%0.0-0.45` |
 | `base_prompt` | STRING (multiline, optional) | Main prompt. Leave empty to encode artists alone |
 
 Outputs `ANIMA_PACK`, an internal struct holding each artist's separately-encoded conditioning, the artist label list, the parsed per-artist weights, and a separately-encoded conditioning for the bare base prompt.
@@ -162,8 +165,9 @@ This is the recommended entry point for new workflows. It outputs both `ANIMA_PR
 | `stable_seed` | `lowrank_avg + static_capture`, prioritizes cross-seed consistency |
 | `fast_preview` | `concat + concat_with_base`, fastest preview path, less precise mixing |
 | `identity_guard` | `lowrank_avg + base_preserve`, protects prompt identity/composition |
+| `compatibility_safe` | `concat + concat_with_base`, disables EMA/static/anchor paths, best first check when other nodes also patch attention |
 
-`intensity` scales the preset's strength except for `fast_preview`, whose concat path does not use strength.
+`intensity` scales the preset's strength except for `fast_preview` and `compatibility_safe`, whose concat paths do not use strength.
 
 `layer_mode` gives fast layer targeting:
 
@@ -183,6 +187,8 @@ Connect `artist_pack`, and optionally the same `preset` / `advanced_options` use
 - parsed artist labels
 - parsed linear `::weight` values
 - per-artist layer routes
+- per-artist timing routes
+- block map showing which artists are active on which DiT blocks
 - requested vs effective `normalize_weights`
 - effective linear weight sum
 - preset, fusion, combine, strength, layer filter, stabilizer settings
@@ -208,6 +214,7 @@ Not connecting this node = default behavior. Connecting it makes its settings ta
 | `anchor_seeds_count` | Number of anchor seeds to average. Default 1, range 1~4 |
 | `anchor_user_blend` | Blend ratio between anchor Q and user Q. 0 = pure anchor, 1 = pure user |
 | `anchor_deep_layer_threshold` | Use anchor for shallow layers `[0, N)`, user Q for deep layers `[N, end]`. -1 disables |
+| `compatibility_mode` | Forces `concat + concat_with_base`, disables EMA/static/anchor stabilizers, and reduces conflict risk with regional/attention-patching nodes |
 
 ## Core concepts
 
@@ -489,6 +496,8 @@ Layer filters use the same syntax as `AnimaArtistOptions.layer_filter`: comma-se
 14-27,-1
 ```
 
+Comma-separated layer routes are kept inside the artist entry, so `wlop@0,2,4, hiten` parses as two artists: `wlop` routed to blocks `0,2,4`, then `hiten`. Newlines always split artists and are the clearest format for complex chains.
+
 This solves the "different artists mixed into different layers" workflow:
 
 - early blocks (`0-8`): composition and global style
@@ -496,6 +505,34 @@ This solves the "different artists mixed into different layers" workflow:
 - late blocks (`19-27`): details, finish, brushwork
 
 If a layer has no matching artist after routing, that layer falls back to the original cross-attention. Global `layer_filter` still applies first: the node only patches the selected global layers, then per-artist routes decide which artists participate inside those patched layers.
+
+### Per-artist sampling timing
+
+Add `%start-end` after an artist entry to make that artist active only during a sampling-progress window:
+
+```
+wlop%0.0-0.45
+krenz%0.45-0.85
+hiten%0.75-1.0
+```
+
+Layer routing and timing can be combined. Put layer routing first, timing last:
+
+```
+wlop@0-8%0.0-0.45
+::krenz::1.2@9-18%0.35-0.85
+hiten@19-27%0.65-1.0
+```
+
+The timing range is normalized sampling progress:
+
+- `0.0` = sampling start, highest noise
+- `0.5` = middle of the denoising trajectory
+- `1.0` = sampling end, final detail pass
+
+This enables scheduled artist roles from one artist chain: one artist can shape early composition, another can dominate the middle structure, and another can add late brushwork. If the current layer and current sampling progress have no matching artist, that layer falls back to original cross-attention for that step.
+
+Per-artist timing is independent from global `start_percent / end_percent`. Global timing still applies first; per-artist timing decides which artists participate inside the globally active window.
 
 ### Important note on heavy weights
 
@@ -579,13 +616,20 @@ Symptoms:
 - batched artist path falls back to serial mode
 - `output_avg` looks much weaker than `concat`
 - cache-based stabilizers stop matching across passes
+- per-artist timing or global step-range looks ignored
 
 Practical fixes:
 
-- try `combine_mode = concat` first; it is more tolerant when regional prompts dominate
+- try `AnimaArtistPreset(preset=compatibility_safe)` first; it is more tolerant when regional prompts dominate
 - disable `artist_static_capture` and `artist_anchor_q` while debugging compatibility
-- use `AnimaArtistInspector` to confirm the parsed artists, weights, and per-artist layer routes
+- use `AnimaArtistInspector` to confirm the parsed artists, weights, per-artist layer routes, timing routes, and block map
 - simplify the workflow until this node is the only cross-attention patcher, then add other nodes back one at a time
+
+Runtime diagnostics:
+
+- suspicious existing cross-attention wrappers are logged before this node patches the target blocks
+- existing `model_function_wrapper` chains are logged when this node also needs sigma capture for step ranges, timing routes, EMA, static capture, or anchor-Q
+- these warnings do not mean the workflow is broken; they mean you should test `compatibility_safe` before assuming the artist chain is bad
 
 ## Acknowledgements
 

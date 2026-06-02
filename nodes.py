@@ -170,6 +170,7 @@ PRESET_STRONG_STYLE = "strong_style"
 PRESET_STABLE_SEED = "stable_seed"
 PRESET_FAST_PREVIEW = "fast_preview"
 PRESET_IDENTITY_GUARD = "identity_guard"
+PRESET_COMPATIBILITY_SAFE = "compatibility_safe"
 
 PRESET_CHOICES = [
     PRESET_BALANCED,
@@ -177,6 +178,7 @@ PRESET_CHOICES = [
     PRESET_STABLE_SEED,
     PRESET_FAST_PREVIEW,
     PRESET_IDENTITY_GUARD,
+    PRESET_COMPATIBILITY_SAFE,
 ]
 
 LAYER_MODE_AUTO = "auto"
@@ -210,6 +212,7 @@ def _base_advanced_options():
         "anchor_user_blend": 0.0,
         "anchor_deep_layer_threshold": _ANCHOR_LAYER_THRESHOLD_DISABLED,
         "layer_filter": "",
+        "compatibility_mode": False,
     }
 
 
@@ -269,12 +272,28 @@ def _build_preset_payload(preset_name, intensity=1.0, layer_mode=LAYER_MODE_AUTO
         payload["combine_mode"] = COMBINE_LOWRANK_AVG
         payload["fusion_mode"] = FUSION_BASE_PRESERVE
         payload["strength"] = 1.25
+    elif preset_name == PRESET_COMPATIBILITY_SAFE:
+        adv["compatibility_mode"] = True
+        payload["combine_mode"] = COMBINE_CONCAT
+        payload["fusion_mode"] = FUSION_CONCAT_WITH_BASE
+        payload["strength"] = 1.0
 
-    if preset_name != PRESET_FAST_PREVIEW:
+    if preset_name not in (PRESET_FAST_PREVIEW, PRESET_COMPATIBILITY_SAFE):
         payload["strength"] = _clamp_float(payload["strength"] * intensity, 0.0, 4.0)
     payload["intensity"] = intensity
     payload["layer_mode"] = layer_mode
     return payload
+
+
+def _apply_compatibility_mode(combine_mode, fusion_mode, strength, adv):
+    if not bool(adv.get("compatibility_mode", False)):
+        return combine_mode, fusion_mode, float(strength), adv
+    adv = dict(adv)
+    adv["compatibility_mode"] = True
+    adv["artist_ema_alpha"] = 0.0
+    adv["artist_static_capture"] = False
+    adv["artist_anchor_q"] = False
+    return COMBINE_CONCAT, FUSION_CONCAT_WITH_BASE, 1.0, adv
 
 
 def _merge_runtime_options(combine_mode, fusion_mode, strength,
@@ -289,6 +308,11 @@ def _merge_runtime_options(combine_mode, fusion_mode, strength,
         strength = preset.get("strength", strength)
     if isinstance(advanced_options, dict):
         adv.update(advanced_options)
+    if preset_name == PRESET_COMPATIBILITY_SAFE:
+        adv["compatibility_mode"] = True
+    combine_mode, fusion_mode, strength, adv = _apply_compatibility_mode(
+        combine_mode, fusion_mode, strength, adv,
+    )
     return combine_mode, fusion_mode, float(strength), adv, preset_name
 
 
@@ -322,13 +346,72 @@ def _extract(conditioning):
     return raw, extra.get("t5xxl_ids"), extra.get("t5xxl_weights")
 
 
+def _is_timing_suffix_text(text):
+    s = str(text or "").strip()
+    return bool(s) and all(ch in set("0123456789.- ") for ch in s)
+
+
+def _is_layer_route_segment(text):
+    s = str(text or "").strip()
+    if not s:
+        return False
+    if "%" in s:
+        s, timing = s.split("%", 1)
+        if not _is_timing_suffix_text(timing):
+            return False
+    return bool(s.strip()) and all(ch in set("0123456789-,， ") for ch in s)
+
+
+def _comma_continues_layer_route(current_text, next_text):
+    cur = str(current_text or "")
+    at_idx = cur.rfind("@")
+    if at_idx < 0:
+        return False
+    tail = cur[at_idx + 1:]
+    if "%" in tail:
+        tail = tail.split("%", 1)[0]
+    if not _is_layer_route_segment(tail):
+        return False
+    return _is_layer_route_segment(next_text)
+
+
 def _split_artist_chain(chain):
-    """切分画师串。返回 list[str]（不解析权重，权重交给 _parse_artist_weights）。"""
+    """切分画师串。逗号可分隔画师，也可出现在末尾 @layer route 内。"""
     if not chain:
         return []
-    s = str(chain).replace("，", ",").replace("\n", ",").replace("\r", ",")
-    parts = [p.strip() for p in s.split(",")]
-    return [p for p in parts if p]
+    s = str(chain).replace("\r", "\n")
+    parts = []
+    buf = []
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch == "\n":
+            part = "".join(buf).strip()
+            if part:
+                parts.append(part)
+            buf = []
+            i += 1
+            continue
+        if ch in ",，":
+            j = i + 1
+            while j < len(s) and s[j] not in ",，\n":
+                j += 1
+            next_piece = s[i + 1:j]
+            if _comma_continues_layer_route("".join(buf), next_piece):
+                buf.append(ch)
+            else:
+                part = "".join(buf).strip()
+                if part:
+                    parts.append(part)
+                buf = []
+            i += 1
+            continue
+        buf.append(ch)
+        i += 1
+    part = "".join(buf).strip()
+    if part:
+        parts.append(part)
+    return parts
 
 
 def _parse_artist_weights(parts):
@@ -422,6 +505,42 @@ def _parse_artist_layer_routes(names):
     return clean_names, routes
 
 
+def _parse_artist_timing_route(name):
+    """解析单个画师末尾的 %start-end 采样进度路由。
+
+    例:
+      wlop%0.0-0.45
+      ::wlop::1.2@0-8%0.45-1.0
+
+    与 layer route 一样只认最后一个 %；无效后缀保留为普通画师文本。
+    """
+    s = str(name or "").strip()
+    if not s or "%" not in s:
+        return s, ""
+    base, timing = s.rsplit("%", 1)
+    timing = timing.strip()
+    if not timing:
+        return s, ""
+    allowed = set("0123456789.- ")
+    if all(ch in allowed for ch in timing):
+        if _parse_timing_filter(timing) is None:
+            return s, ""
+        base = base.strip()
+        if base:
+            return base, timing
+    return s, ""
+
+
+def _parse_artist_timing_routes(names):
+    clean_names = []
+    timings = []
+    for name in names:
+        clean, timing = _parse_artist_timing_route(name)
+        clean_names.append(clean)
+        timings.append(timing)
+    return clean_names, timings
+
+
 def _parse_layer_filter(text, num_blocks):
     if not text:
         return None
@@ -481,6 +600,126 @@ def _resolve_artist_layer_routes(route_texts, num_blocks):
     return routes, has_routes
 
 
+def _resolve_target_blocks_from_options(adv, num_blocks, strict=False):
+    layer_filter_text = str((adv or {}).get("layer_filter", "") or "")
+    explicit_blocks = _parse_layer_filter(layer_filter_text, num_blocks)
+    if explicit_blocks is not None:
+        return explicit_blocks
+    sb = int((adv or {}).get("start_block", 0))
+    eb = int((adv or {}).get("end_block", -1))
+    sb_real = max(0, sb)
+    eb_real = num_blocks - 1 if eb < 0 else min(num_blocks - 1, eb)
+    if sb_real > eb_real:
+        if strict:
+            raise ValueError(
+                f"[AnimaCrossAttn] start_block={sb_real} > end_block={eb_real} (共 {num_blocks})"
+            )
+        return []
+    return list(range(sb_real, eb_real + 1))
+
+
+def _parse_timing_filter(text):
+    if not text:
+        return None
+    s = str(text).strip().replace(" ", "")
+    if not s:
+        return None
+    if "-" not in s[1:]:
+        return None
+    dash_idx = s.index("-", 1)
+    try:
+        start = float(s[:dash_idx])
+        end = float(s[dash_idx + 1:])
+    except ValueError:
+        return None
+    if start > end:
+        start, end = end, start
+    start = _clamp_float(start, 0.0, 1.0)
+    end = _clamp_float(end, 0.0, 1.0)
+    if end <= start:
+        return None
+    return start, end
+
+
+def _resolve_artist_timing_routes(timing_texts):
+    timings = []
+    has_timings = False
+    for timing in timing_texts or []:
+        parsed = _parse_timing_filter(timing)
+        if parsed is not None:
+            has_timings = True
+            timings.append(parsed)
+        else:
+            timings.append(None)
+    return timings, has_timings
+
+
+def _artist_timing_active(timing, state):
+    if timing is None:
+        return True
+    cur = state.get("current_sigma")
+    if cur is None:
+        return True
+    lo, hi = timing
+    return lo <= float(cur) <= hi
+
+
+def _format_route_timing(label, timing):
+    if timing is None:
+        return label
+    start, end = timing
+    return f"{label}%{start:.2f}-{end:.2f}"
+
+
+def _format_layer_span(start, end):
+    return f"L{start}" if start == end else f"L{start}-L{end}"
+
+
+def _format_artist_block_map(labels, layer_route_texts, timing_texts,
+                             num_blocks, target_blocks=None):
+    labels = list(labels or [])
+    if not labels:
+        return "  (none)"
+    if target_blocks is None:
+        target_blocks = list(range(int(num_blocks)))
+    else:
+        target_blocks = list(target_blocks)
+    if not target_blocks:
+        return "  (no patched blocks)"
+    layer_routes, _ = _resolve_artist_layer_routes(layer_route_texts or [], num_blocks)
+    timing_routes, _ = _resolve_artist_timing_routes(timing_texts or [])
+    if len(layer_routes) < len(labels):
+        layer_routes.extend([None] * (len(labels) - len(layer_routes)))
+    if len(timing_routes) < len(labels):
+        timing_routes.extend([None] * (len(labels) - len(timing_routes)))
+
+    rows = []
+    for block_idx in target_blocks:
+        active = []
+        for label, route, timing in zip(labels, layer_routes, timing_routes):
+            if route is None or block_idx in route:
+                active.append(_format_route_timing(str(label), timing))
+        rows.append((block_idx, tuple(active)))
+
+    grouped = []
+    start = end = rows[0][0]
+    prev_active = rows[0][1]
+    for block_idx, active in rows[1:]:
+        if active == prev_active and block_idx == end + 1:
+            end = block_idx
+            continue
+        grouped.append((start, end, prev_active))
+        start = end = block_idx
+        prev_active = active
+    grouped.append((start, end, prev_active))
+
+    lines = []
+    for start, end, active in grouped:
+        names = ", ".join(active) if active else "(original cross-attn)"
+        lines.append(f"  {_format_layer_span(start, end)}: {names}")
+    return "\n".join(lines)
+
+
 def _project_perpendicular(delta, base):
     """剥离 delta 沿 base 方向的平行分量，返回垂直分量。
 
@@ -527,6 +766,28 @@ def _cleanup_residual_wrappers(dm):
             blk.cross_attn = original
             cleaned += 1
     return cleaned
+
+
+def _describe_external_cross_attn_patches(dm, target_blocks):
+    hints = []
+    if not hasattr(dm, "blocks"):
+        return hints
+    for idx in target_blocks or []:
+        if idx < 0 or idx >= len(dm.blocks):
+            continue
+        blk = dm.blocks[idx]
+        if not hasattr(blk, "cross_attn"):
+            continue
+        ca = blk.cross_attn
+        if isinstance(ca, _CrossAttnWrapper):
+            continue
+        original = getattr(ca, "original", None)
+        if original is None:
+            continue
+        hints.append(
+            f"L{idx}: {type(ca).__name__} wraps {type(original).__name__}"
+        )
+    return hints
 
 
 def _preprocess_one(dm, raw, ids, weights, target_device, target_dtype):
@@ -815,12 +1076,17 @@ class _CrossAttnWrapper(nn.Module):
         fusion_mode = st["fusion_mode"]
         strength = float(st["strength"])
         weights = st["user_weights"]
-        if st.get("has_artist_layer_routes", False):
+        has_artist_routes = (
+            st.get("has_artist_layer_routes", False)
+            or st.get("has_artist_timing_routes", False)
+        )
+        if has_artist_routes:
             routes = st.get("artist_layer_routes") or []
+            timings = st.get("artist_timing_routes") or []
             filtered = [
                 (artist, weight)
-                for artist, weight, route in zip(individuals, weights, routes)
-                if route is None or self._idx in route
+                for artist, weight, route, timing in zip(individuals, weights, routes, timings)
+                if (route is None or self._idx in route) and _artist_timing_active(timing, st)
             ]
             if not filtered:
                 return self.original(x, context, rope_emb=rope_emb,
@@ -1355,6 +1621,7 @@ class AnimaArtistPack:
                         "默认 weight=1.0。范围 [0.0, 4.0]。\n"
                         "::weight 与 括号可以叠加: ::(wlop:1.1)::0.8\n"
                         "可选每画师层路由: wlop@0-8, krenz@9-18, hiten@19-27\n"
+                        "可选每画师时间路由: wlop@0-8%0.0-0.45\n"
                         "\n"
                         "任何画师指定了 ::weight 后，normalize_weights 自动失效\n"
                         "（尊重用户输入的按重）。"
@@ -1378,6 +1645,7 @@ class AnimaArtistPack:
 
     def pack(self, clip, artist_chain, base_prompt=""):
         parts = _split_artist_chain(artist_chain)
+        parts, timing_routes = _parse_artist_timing_routes(parts)
         parts, layer_routes = _parse_artist_layer_routes(parts)
         names, parsed_weights, has_explicit = _parse_artist_weights(parts)
         base = (base_prompt or "").strip()
@@ -1396,6 +1664,7 @@ class AnimaArtistPack:
                 "labels": [],
                 "weights": [],
                 "layer_routes": [],
+                "timing_routes": [],
                 "has_explicit_weights": False,
                 "base_prompt": base,
                 "base_conditioning": base_conditioning,
@@ -1409,6 +1678,7 @@ class AnimaArtistPack:
             names = names[:MAX_ARTISTS]
             parsed_weights = parsed_weights[:MAX_ARTISTS]
             layer_routes = layer_routes[:MAX_ARTISTS]
+            timing_routes = timing_routes[:MAX_ARTISTS]
 
         conditionings = []
         for name in names:
@@ -1433,6 +1703,7 @@ class AnimaArtistPack:
             "labels": names,
             "weights": parsed_weights,
             "layer_routes": layer_routes,
+            "timing_routes": timing_routes,
             "has_explicit_weights": has_explicit,
             "base_prompt": base,
             "base_conditioning": base_conditioning,
@@ -1589,6 +1860,14 @@ class AnimaArtistOptions:
                                 "例: '0,3,5-10,-1' = 第0、3、第5~10、最后一层。\n"
                                 "填了该字段会覆盖 start_block/end_block。留空 = 不生效"
                 }),
+                "compatibility_mode": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": (
+                        "兼容安全模式。开启后强制使用 concat + concat_with_base，"
+                        "并关闭 EMA / static_capture / anchor_q，减少与区域提示、Forge Couple、"
+                        "其它 attention patch 节点互相覆盖的概率。"
+                    ),
+                }),
             },
         }
 
@@ -1602,7 +1881,7 @@ class AnimaArtistOptions:
               static_capture_k=_STATIC_CAPTURE_K_DEFAULT, artist_anchor_q=False,
               anchor_seeds_count=1, anchor_user_blend=0.0,
               anchor_deep_layer_threshold=_ANCHOR_LAYER_THRESHOLD_DISABLED,
-              layer_filter=""):
+              layer_filter="", compatibility_mode=False):
         return ({
             "start_block": int(start_block),
             "end_block": int(end_block),
@@ -1618,6 +1897,7 @@ class AnimaArtistOptions:
             "anchor_user_blend": float(anchor_user_blend),
             "anchor_deep_layer_threshold": int(anchor_deep_layer_threshold),
             "layer_filter": str(layer_filter or ""),
+            "compatibility_mode": bool(compatibility_mode),
         },)
 
 
@@ -1634,7 +1914,8 @@ class AnimaArtistPreset:
                         "strong_style: 更浓画风，strength 外推到 1.65\n"
                         "stable_seed: lowrank + static capture，优先跨 seed 稳定\n"
                         "fast_preview: concat 路径，优先速度，适合找图\n"
-                        "identity_guard: base_preserve + lowrank，尽量保主 prompt 身份/构图"
+                        "identity_guard: base_preserve + lowrank，尽量保主 prompt 身份/构图\n"
+                        "compatibility_safe: concat + concat_with_base，优先兼容区域/Forge 类节点"
                     ),
                 }),
                 "intensity": ("FLOAT", {
@@ -1683,6 +1964,7 @@ class AnimaArtistPreset:
             f"lowrank_k: {int(adv.get('lowrank_k', 1))}",
             f"static_capture: {_format_bool(adv.get('artist_static_capture', False))}",
             f"static_capture_k: {int(adv.get('static_capture_k', _STATIC_CAPTURE_K_DEFAULT))}",
+            f"compatibility_mode: {_format_bool(adv.get('compatibility_mode', False))}",
             f"layer_filter: {adv.get('layer_filter') or 'all'}",
         ])
         return {"ui": {"text": [summary]}, "result": (payload, adv, summary)}
@@ -1733,6 +2015,9 @@ class AnimaArtistInspector:
         layer_routes = artist_pack.get("layer_routes")
         if not isinstance(layer_routes, (list, tuple)) or len(layer_routes) != len(labels):
             layer_routes = [""] * len(labels)
+        timing_routes = artist_pack.get("timing_routes")
+        if not isinstance(timing_routes, (list, tuple)) or len(timing_routes) != len(labels):
+            timing_routes = [""] * len(labels)
         has_explicit = bool(artist_pack.get("has_explicit_weights", False))
         base_prompt = str(artist_pack.get("base_prompt", "") or "")
 
@@ -1756,6 +2041,7 @@ class AnimaArtistInspector:
             f"effective normalize_weights: {_format_bool(effective_normalize)}",
             f"effective linear weight sum: {weight_sum:.3f}",
             f"layer_filter: {adv.get('layer_filter') or 'all'}",
+            f"compatibility_mode: {_format_bool(adv.get('compatibility_mode', False))}",
             f"sigma range percent: {float(adv.get('start_percent', 0.0)):.3f} - "
             f"{float(adv.get('end_percent', 1.0)):.3f}",
             f"EMA alpha: {float(adv.get('artist_ema_alpha', 0.0)):.2f}",
@@ -1768,11 +2054,22 @@ class AnimaArtistInspector:
         ]
 
         if labels:
-            for idx, (label, weight, route) in enumerate(zip(labels, weights, layer_routes), start=1):
+            for idx, (label, weight, route, timing) in enumerate(
+                zip(labels, weights, layer_routes, timing_routes), start=1,
+            ):
                 route_text = f" @ {route}" if route else ""
-                lines.append(f"  {idx}. {label} :: {weight:.3g}{route_text}")
+                timing_text = f" % {timing}" if timing else ""
+                lines.append(f"  {idx}. {label} :: {weight:.3g}{route_text}{timing_text}")
         else:
             lines.append("  (none)")
+
+        inspector_blocks = 28
+        target_blocks = _resolve_target_blocks_from_options(adv, inspector_blocks)
+        lines.append("")
+        lines.append("block map (assumes 28 Anima blocks):")
+        lines.append(_format_artist_block_map(
+            labels, layer_routes, timing_routes, inspector_blocks, target_blocks,
+        ))
 
         warnings = []
         if not labels:
@@ -1794,9 +2091,13 @@ class AnimaArtistInspector:
             warnings.append("只有 1 个画师时 lowrank_avg 没意义，会自动按 output_avg 工作。")
         if any(str(route or "").strip() for route in layer_routes):
             warnings.append("已启用每画师层路由；同层无匹配画师时该层会回退原始 cross-attn。")
+        if any(str(timing or "").strip() for timing in timing_routes):
+            warnings.append("已启用每画师时间路由；当前采样进度无匹配画师时该层会回退原始 cross-attn。")
+        if adv.get("compatibility_mode", False):
+            warnings.append("compatibility_mode 已开启：已强制 concat + concat_with_base，并关闭重型稳定器。")
         warnings.append(
             "兼容提醒：区域提示/Forge Couple/其它 cross-attn patch 节点可能覆盖或削弱本节点；"
-            "若效果消失，先改用 concat 或减少其它 attention patch 节点。"
+            "若效果消失，先启用 compatibility_safe 预设或减少其它 attention patch 节点。"
         )
 
         lines.append("")
@@ -1873,8 +2174,6 @@ class AnimaArtistCrossAttn:
         combine_mode, fusion_mode, strength, adv, preset_name = _merge_runtime_options(
             combine_mode, fusion_mode, strength, advanced_options, preset,
         )
-        sb = int(adv.get("start_block", 0))
-        eb = int(adv.get("end_block", -1))
         start_percent = float(adv.get("start_percent", 0.0))
         end_percent = float(adv.get("end_percent", 1.0))
         normalize_w = bool(adv.get("normalize_weights", True))
@@ -1891,7 +2190,6 @@ class AnimaArtistCrossAttn:
         anchor_deep_layer_threshold = int(
             adv.get("anchor_deep_layer_threshold", _ANCHOR_LAYER_THRESHOLD_DISABLED)
         )
-        layer_filter_text = str(adv.get("layer_filter", "") or "")
 
         use_sigma_range = (start_percent > 0.0) or (end_percent < 1.0)
         # EMA / static_capture / anchor_q 都需要 sigma capture 检测新一次采样
@@ -1941,6 +2239,7 @@ class AnimaArtistCrossAttn:
         conditionings = artist_pack.get("conditionings") or []
         labels = artist_pack.get("labels") or []
         layer_route_texts = artist_pack.get("layer_routes") or []
+        timing_route_texts = artist_pack.get("timing_routes") or []
 
         base_cond_out = artist_pack.get("base_conditioning")
         if base_cond_out is None:
@@ -2043,18 +2342,22 @@ class AnimaArtistCrossAttn:
         elif len(artist_layer_routes) > n:
             artist_layer_routes = artist_layer_routes[:n]
 
-        explicit_blocks = _parse_layer_filter(layer_filter_text, num_blocks)
-        if explicit_blocks is not None:
-            target_blocks = explicit_blocks
-            sb_real, eb_real = target_blocks[0], target_blocks[-1]
-        else:
-            sb_real = max(0, sb)
-            eb_real = num_blocks - 1 if eb < 0 else min(num_blocks - 1, eb)
-            if sb_real > eb_real:
-                raise ValueError(
-                    f"[AnimaCrossAttn] start_block={sb_real} > end_block={eb_real} (共 {num_blocks})"
-                )
-            target_blocks = list(range(sb_real, eb_real + 1))
+        artist_timing_percent_routes, has_artist_timing_routes = _resolve_artist_timing_routes(
+            timing_route_texts,
+        )
+        if len(artist_timing_percent_routes) < n:
+            artist_timing_percent_routes.extend([None] * (n - len(artist_timing_percent_routes)))
+        elif len(artist_timing_percent_routes) > n:
+            artist_timing_percent_routes = artist_timing_percent_routes[:n]
+
+        target_blocks = _resolve_target_blocks_from_options(adv, num_blocks, strict=True)
+        external_cross_attn_patches = _describe_external_cross_attn_patches(dm, target_blocks)
+        if external_cross_attn_patches and not adv.get("compatibility_mode", False):
+            logger.warning(
+                "[AnimaCrossAttn] 检测到疑似外部 cross-attn 包装: %s。"
+                "如画师效果变弱/消失，建议启用 compatibility_safe 预设。",
+                "; ".join(external_cross_attn_patches[:8]),
+            )
 
         sigma_range = None
         if use_sigma_range:
@@ -2069,6 +2372,30 @@ class AnimaArtistCrossAttn:
                     "[AnimaCrossAttn] 解析 sigma 范围失败: %s。时间步控制不生效", e
                 )
                 sigma_range = None
+
+        artist_timing_routes = [None] * n
+        if has_artist_timing_routes:
+            try:
+                ms = model.get_model_object("model_sampling")
+                artist_timing_routes = []
+                for timing in artist_timing_percent_routes:
+                    if timing is None:
+                        artist_timing_routes.append(None)
+                        continue
+                    start, end = timing
+                    s_at_start = float(ms.percent_to_sigma(start))
+                    s_at_end = float(ms.percent_to_sigma(end))
+                    lo, hi = sorted([s_at_end, s_at_start])
+                    artist_timing_routes.append((lo, hi))
+            except Exception as e:
+                logger.warning(
+                    "[AnimaCrossAttn] 解析每画师时间路由所需 sigma 范围失败: %s。"
+                    "本次 timing route 将按始终启用处理。", e,
+                )
+                artist_timing_routes = [None] * n
+                has_artist_timing_routes = False
+
+        need_sigma_capture = need_sigma_capture or has_artist_timing_routes
 
         m = model.clone()
 
@@ -2085,6 +2412,8 @@ class AnimaArtistCrossAttn:
             "labels": labels,
             "artist_layer_routes": artist_layer_routes,
             "has_artist_layer_routes": has_artist_layer_routes,
+            "artist_timing_routes": artist_timing_routes,
+            "has_artist_timing_routes": has_artist_timing_routes,
             "normalize_weights": normalize_w,
             "has_explicit_weights": has_explicit_weights,
             "preset_name": preset_name,
@@ -2102,6 +2431,7 @@ class AnimaArtistCrossAttn:
             "dm_ref": dm,
             "sigma_range": sigma_range,
             "current_sigma": None,
+            "external_cross_attn_patches": external_cross_attn_patches,
             "_ema_cache": {},
             "_ema_last_sigma": None,
             "_static_cache": {},
@@ -2116,6 +2446,12 @@ class AnimaArtistCrossAttn:
 
         if need_sigma_capture:
             prev = m.model_options.get("model_function_wrapper")
+            if prev is not None and not adv.get("compatibility_mode", False):
+                logger.warning(
+                    "[AnimaCrossAttn] 检测到已有 model_function_wrapper，"
+                    "本节点会链式调用它；若时间路由或稳定器失效，请启用 compatibility_safe "
+                    "或简化其它 model wrapper 节点。"
+                )
             m.set_model_unet_function_wrapper(_make_sigma_capture(state, prev))
 
 
