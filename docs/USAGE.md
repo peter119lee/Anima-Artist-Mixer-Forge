@@ -6,7 +6,7 @@ This is a ComfyUI custom node that provides **multi-artist mixing** for the Anim
 
 The companion `AnimaArtistPack` node provides a one-shot experience: write your artist list in one text box (comma or newline separated) and your main prompt in another. The node automatically splits, encodes, and packages everything for downstream use.
 
-This README documents the **v24 architecture**, which adds layered cross-seed stabilization (EMA / SVD / static-capture / anchor-Q), CFG-style strength extrapolation, and a new linear injection-layer weight syntax `::name::weight`. Older versions are still functionally a subset.
+This README documents the **v25 architecture**, which adds one-click presets, an in-UI inspector, deterministic low-rank mixing, safer explicit weights, layered cross-seed stabilization (EMA / low-rank / static-capture / anchor-Q), CFG-style strength extrapolation, and the linear injection-layer weight syntax `::name::weight`. Older versions are still functionally a subset.
 
 ## What problem it solves
 
@@ -46,7 +46,7 @@ Each layer's injection is wrapped in exception isolation: if a single layer's in
 
 ComfyUI batches cond and uncond into a single `batch=2` forward, with `transformer_options["cond_or_uncond"]` marking each row. This node injects only into the cond rows by default; uncond rows keep their original base context, so CFG guidance is preserved naturally. `apply_to_uncond` defaults to False and is not recommended to enable.
 
-## The cross-seed instability problem (and how v24 addresses it)
+## The cross-seed instability problem (and how v25 addresses it)
 
 In multi-artist setups, the same prompt with different seeds tends to produce **noticeably different style mixes** — sometimes wlop dominates, other times sakimichan does, even though their weights are equal. This is structural, not a bug:
 
@@ -54,10 +54,10 @@ In multi-artist setups, the same prompt with different seeds tends to produce **
 - For each seed, attention picks slightly different artist token weights
 - Across seeds, the "dominant artist" can flip
 
-v24 layers four optional stabilizers, ordered from light to heavy (configured in `AnimaArtistOptions`):
+v25 layers four optional stabilizers, ordered from light to heavy (configured in `AnimaArtistOptions` or selected through `AnimaArtistPreset`):
 
 1. **artist_ema_alpha**  — temporal EMA smoothing across sampling steps
-2. **combine_mode = lowrank_avg + lowrank_k**  — SVD low-rank constraint on multi-artist deltas
+2. **combine_mode = lowrank_avg + lowrank_k**  — deterministic low-rank constraint on multi-artist deltas
 3. **artist_static_capture + static_capture_k**  — freeze artist attention after the first K steps
 4. **artist_anchor_q**  — replace user-seed Q with a fixed-seed anchor's Q (most aggressive, ~fully decouples cross-seed)
 
@@ -73,7 +73,7 @@ In practice:
 - Style-similar artists tend to mix well
 - Style-divergent artists may "regress to the mean", landing in a compromise that resembles neither A nor B. This is more pronounced with weight normalization on (the default), since features get averaged after being normalized to relative proportions
 - Extreme weight ratios (e.g. `"1.0, 0.05"`) typically collapse back to the dominant artist's pure style
-- v24's `lowrank_avg` (k=1) deliberately accepts more "regression to the mean" in exchange for cross-seed stability — good for production, less suited to experimental style exploration
+- v25's `lowrank_avg` (k=1) deliberately accepts more "regression to the mean" in exchange for cross-seed stability — good for production, less suited to experimental style exploration
 
 ## Requirements
 
@@ -103,7 +103,9 @@ Restart ComfyUI. No extra dependencies.
 
 [Load Anima Model] ──► MODEL ──► AnimaArtistCrossAttn
 
+(optional) AnimaArtistPreset  ──► preset ────────────► AnimaArtistCrossAttn
 (optional) AnimaArtistOptions ──► advanced_options ──► AnimaArtistCrossAttn
+(optional) AnimaArtistInspector ◄── artist_pack / preset / advanced_options
 ```
 
 Key points:
@@ -111,7 +113,9 @@ Key points:
 - Write your main prompt in the bottom text box
 - Connect `AnimaArtistCrossAttn`'s `base_prompt` output directly to KSampler's positive input
 - Encode the negative prompt independently with `CLIPTextEncode`; it does not go through this plugin
+- Start with `AnimaArtistPreset(preset=balanced)` unless you already know which advanced settings you want
 - Advanced controls (layer range, sampling-step range, stabilizers) come via the optional `AnimaArtistOptions` node
+- Use `AnimaArtistInspector` to show the actual effective weights, preset settings, and configuration warnings inside ComfyUI
 
 ## Parameters
 
@@ -139,10 +143,49 @@ How it works internally: the node splits `artist_chain` into N artist names, par
 | `enabled` | BOOLEAN | Master switch |
 | `apply_to_uncond` | BOOLEAN | Default False, **not recommended** (breaks CFG) |
 | `advanced_options` | ANIMA_OPTS | Optional advanced controls |
+| `preset` | ANIMA_PRESET | Optional one-click preset. When connected, it overrides `combine_mode`, `fusion_mode`, `strength`, then `advanced_options` can still override detailed options |
 
 Outputs:
 - `model`: model with artist mixing patched in. Connect to KSampler's `model` input
 - `base_prompt`: the bare base-prompt conditioning from `artist_pack`. Connect to KSampler's positive input
+
+### AnimaArtistPreset (one-click helper)
+
+This is the recommended entry point for new workflows. It outputs both `ANIMA_PRESET` and `ANIMA_OPTS`.
+
+| Preset | What it does |
+|---|---|
+| `balanced` | `output_avg + interpolate`, light EMA. Best default |
+| `strong_style` | Stronger style amplification with controlled extrapolation |
+| `stable_seed` | `lowrank_avg + static_capture`, prioritizes cross-seed consistency |
+| `fast_preview` | `concat + concat_with_base`, fastest preview path, less precise mixing |
+| `identity_guard` | `lowrank_avg + base_preserve`, protects prompt identity/composition |
+
+`intensity` scales the preset's strength except for `fast_preview`, whose concat path does not use strength.
+
+`layer_mode` gives fast layer targeting:
+
+| layer_mode | Behavior |
+|---|---|
+| `auto` / `all_layers` | All layers |
+| `style_core` | `0-18`, stronger global style control |
+| `detail_layers` | `12-63`, more detail/brushwork focused |
+| `custom` | Uses `custom_layer_filter` |
+
+When both `preset` and `advanced_options` are connected to `AnimaArtistCrossAttn`, the preset fills the base configuration and `advanced_options` overrides the detailed fields.
+
+### AnimaArtistInspector (UI report)
+
+Connect `artist_pack`, and optionally the same `preset` / `advanced_options` used by `AnimaArtistCrossAttn`. If you are not using presets, set Inspector's `combine_mode`, `fusion_mode`, and `strength` to match the CrossAttn node. It prints:
+
+- parsed artist labels
+- parsed linear `::weight` values
+- requested vs effective `normalize_weights`
+- effective linear weight sum
+- preset, fusion, combine, strength, layer filter, stabilizer settings
+- warnings for risky or mutually-incompatible combinations
+
+Use this node whenever results look wrong. It catches common mistakes faster than reading console logs.
 
 ### AnimaArtistOptions (advanced)
 
@@ -155,7 +198,7 @@ Not connecting this node = default behavior. Connecting it makes its settings ta
 | `normalize_weights` | True: weights are normalized to relative proportions. False: weights act as independent strength multipliers. Auto-bypassed when any artist uses `::weight` syntax |
 | `layer_filter` | Advanced layer-selection string (overrides start_block/end_block). Example: `"0,3,5-10,-1"` |
 | `artist_ema_alpha` | Temporal EMA on artist attention output across steps. 0 = off |
-| `lowrank_k` | SVD truncation rank for `lowrank_avg`. 1 = most stable |
+| `lowrank_k` | Low-rank truncation rank for `lowrank_avg`. 1 = most stable |
 | `artist_static_capture` | Freeze artist attention after `static_capture_k` warmup steps |
 | `static_capture_k` | Number of warmup steps before freezing. Default 6, range 1~12 |
 | `artist_anchor_q` | Replace user-seed Q with a fixed-seed anchor's Q. The strongest cross-seed stabilizer |
@@ -190,14 +233,14 @@ Single cross-attention call, but all artists compete in the same softmax. The pa
 
 Pros: single forward, fast. Cons: attention is shared across artists, typically less expressive than output_avg.
 
-#### `lowrank_avg` (v22, cross-seed stable)
+#### `lowrank_avg` (v25 deterministic, cross-seed stable)
 
-A stabilized variant of `output_avg`. Each artist's attention output minus the base output gives a delta tensor; the N delta tensors are stacked into a matrix `D ∈ ℝ^(N × M)`. SVD truncates `D` to its top-k principal components before reconstructing and weighted-averaging:
+A stabilized variant of `output_avg`. Each artist's attention output minus the base output gives a delta tensor; the N delta tensors are stacked into a matrix `D ∈ ℝ^(N × M)`. v25 uses deterministic Gram eigendecomposition (`D @ D.T`) to reconstruct the top-k row-space directions before weighted-averaging:
 
 ```
 delta_i = cross_attn(x, K_i, V_i) - base_out
 D = stack(delta_i)
-D_lowrank = SVD_truncate(D, k)
+D_lowrank = topk_rowspace_project(D, k)
 artist_total = base_out + sum_i (w_i * D_lowrank[i])
 ```
 
@@ -263,7 +306,7 @@ Cache resets when sigma jumps up (i.e. a new sampling run begins).
 
 ### lowrank_avg + lowrank_k (medium)
 
-See `combine_mode = lowrank_avg` above. The SVD constraint is permanent (every step), unlike EMA which only smooths over time. More aggressive but more uniform-feeling result.
+See `combine_mode = lowrank_avg` above. The low-rank constraint is permanent (every step), unlike EMA which only smooths over time. More aggressive but more uniform-feeling result.
 
 ### artist_static_capture + static_capture_k (heavy, also a perf win)
 
@@ -288,7 +331,7 @@ Root cause of cross-seed style drift: the cross-attn Q comes from base hidden st
 
 Result: artist attention is identical across all seeds for the same prompt + resolution. Cross-seed style drift drops to near-zero.
 
-Cache key is `(x.shape, id(context))` — same prompt + same resolution reuses the anchor for free across seeds. Different prompt or different resolution triggers a fresh anchor pass.
+Cache key is `(x.shape, id(context), first_timestep)` — same prompt + same resolution + same initial sampling condition reuses the anchor for free across seeds. Different prompt, resolution, or initial timestep triggers a fresh anchor pass.
 
 First-time cost: ~1 extra step worth of forward time for the anchor pass. After that, zero overhead per seed.
 
@@ -301,6 +344,18 @@ First-time cost: ~1 extra step worth of forward time for the anchor pass. After 
 Mutually exclusive with `artist_static_capture` (anchor takes priority, with a warn log).
 
 ## Recommended combinations
+
+In v25, use `AnimaArtistPreset` first:
+
+| Goal | Preset |
+|---|---|
+| normal use | `balanced` |
+| stronger visual style | `strong_style` |
+| same prompt across many seeds | `stable_seed` |
+| fast exploration | `fast_preview` |
+| preserve character/object identity | `identity_guard` |
+
+Manual equivalents:
 
 ### Daily use, no stabilizers
 
@@ -407,7 +462,7 @@ There are **two independent** weighting points:
 
 They can be **stacked**: `::(wlop:1.1)::0.8` applies CLIP weight 1.1 first, then injection weight 0.8.
 
-When any artist uses `::weight` syntax, `normalize_weights` is automatically bypassed (the explicit weights are honored as-is).
+When any artist uses `::weight` syntax, `normalize_weights` is automatically bypassed at runtime (the explicit weights are honored as-is).
 
 Global artist contribution is controlled by `AnimaArtistCrossAttn`'s `strength` (independent of per-artist weights).
 
@@ -421,7 +476,7 @@ Default `normalize_weights = True`: in `output_avg`, N artists' weights are norm
 
 With normalization off and no `::weight` used: each artist contributes at its raw weight (default 1.0). **Total contribution = N**, which exceeds the model's training distribution and produces pure noise.
 
-The node intercepts dangerous configurations (when `::weight` is not in use):
+The node intercepts dangerous configurations when `::weight` is not in use:
 
 | Artist count + normalize=False | Behavior |
 |---|---|
@@ -429,7 +484,9 @@ The node intercepts dangerous configurations (when `::weight` is not in use):
 | 2~3 artists | Warning, but allowed (may overexpose) |
 | 4+ artists | **Hard error**, with three suggested fixes |
 
-If you actually want "one artist weakened", the **recommended approach is to keep normalize_weights=True** and use either CLIP weighting `(name:0.3)` or injection weighting `::name::0.3` to lower a specific artist:
+When `::weight` is used, v25 judges risk by the **actual sum of absolute linear weights**, not by artist count. Four artists at `::0.25` each are valid because the total is still 1.0.
+
+If you actually want "one artist weakened", the recommended approach is to use injection weighting `::name::0.3` to lower a specific artist:
 
 ```
 wlop, ::krenz::0.3
@@ -483,4 +540,3 @@ Special thanks to **汐浮尘** for co-development, testing, and design contribu
 ## License
 
 MIT License. See [LICENSE](LICENSE) for the full text.
-

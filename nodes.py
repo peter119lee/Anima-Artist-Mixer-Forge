@@ -1,4 +1,20 @@
-"""Anima/MiniTrainDIT cross-attention 多画师注入 v24。
+"""Anima/MiniTrainDIT cross-attention 多画师注入 v25。
+===== v25 改动 =====
+
+1. 修复 ::name::weight 显式权重没有真正关闭 normalize_weights 的问题。
+   v24 文档说显式权重会尊重绝对线性强度，但实际 patch 路径仍按默认值归一化。
+
+2. 新增 AnimaArtistPreset：
+   用 balanced / strong_style / stable_seed / fast_preview / identity_guard 五个预设
+   快速输出 combine/fusion/strength/advanced_options，降低新手参数门槛。
+
+3. 新增 AnimaArtistInspector：
+   在 ComfyUI UI 内直接显示画师、线性权重、有效 normalize 状态、预设参数和风险提示。
+
+4. lowrank_avg 改为确定性的 Gram eigendecomposition 路径，避免 torch.svd_lowrank 的随机近似。
+
+5. anchor_q cache key 加入首个 timestep/sigma，降低切换采样条件后复用旧 anchor 的风险。
+
 ===== v24 改动 =====
 
 新增 ::name::weight 画师串语法——作用于 cross-attn 注入层的线性权重。
@@ -104,7 +120,7 @@ K=1 时退化为 v18（单点缓存）；K>=总 step 数时全程累加不冻结
    alpha=0.0 关闭（默认）。新一次采样（sigma 上升）自动重置缓存。
 
 2. combine_mode=lowrank_avg + lowrank_k (选项3，LoRA 式注入)
-   N 个画师 delta 堆成矩阵 SVD 截断到 top-k 主方向。
+   N 个画师 delta 堆成矩阵，确定性投影到 top-k 主方向。
    k 越小越稳定，k=1 默认。N=1 自动 fallback 到 output_avg。
 
 3. fusion_mode=base_preserve
@@ -148,6 +164,149 @@ _ANCHOR_SEED = 42                          # 单 anchor 默认 seed（与下面 
 _ANCHOR_SEEDS_POOL = [42, 100, 200, 300]   # 多 anchor 平均时依次取前 N 个 seed
 _ANCHOR_SEEDS_MAX = 4                      # UI 上限 = len(_ANCHOR_SEEDS_POOL)
 _ANCHOR_LAYER_THRESHOLD_DISABLED = -1      # Q5: -1 表示全部层都用 anchor (v21 默认)
+
+PRESET_BALANCED = "balanced"
+PRESET_STRONG_STYLE = "strong_style"
+PRESET_STABLE_SEED = "stable_seed"
+PRESET_FAST_PREVIEW = "fast_preview"
+PRESET_IDENTITY_GUARD = "identity_guard"
+
+PRESET_CHOICES = [
+    PRESET_BALANCED,
+    PRESET_STRONG_STYLE,
+    PRESET_STABLE_SEED,
+    PRESET_FAST_PREVIEW,
+    PRESET_IDENTITY_GUARD,
+]
+
+LAYER_MODE_AUTO = "auto"
+LAYER_MODE_ALL = "all_layers"
+LAYER_MODE_STYLE_CORE = "style_core"
+LAYER_MODE_DETAIL = "detail_layers"
+LAYER_MODE_CUSTOM = "custom"
+
+LAYER_MODE_CHOICES = [
+    LAYER_MODE_AUTO,
+    LAYER_MODE_ALL,
+    LAYER_MODE_STYLE_CORE,
+    LAYER_MODE_DETAIL,
+    LAYER_MODE_CUSTOM,
+]
+
+
+def _base_advanced_options():
+    return {
+        "start_block": 0,
+        "end_block": -1,
+        "start_percent": 0.0,
+        "end_percent": 1.0,
+        "normalize_weights": True,
+        "artist_ema_alpha": 0.0,
+        "lowrank_k": 1,
+        "artist_static_capture": False,
+        "static_capture_k": _STATIC_CAPTURE_K_DEFAULT,
+        "artist_anchor_q": False,
+        "anchor_seeds_count": 1,
+        "anchor_user_blend": 0.0,
+        "anchor_deep_layer_threshold": _ANCHOR_LAYER_THRESHOLD_DISABLED,
+        "layer_filter": "",
+    }
+
+
+def _layer_filter_for_mode(layer_mode, custom_layer_filter):
+    if layer_mode == LAYER_MODE_ALL:
+        return ""
+    if layer_mode == LAYER_MODE_STYLE_CORE:
+        return "0-18"
+    if layer_mode == LAYER_MODE_DETAIL:
+        return "12-63"
+    if layer_mode == LAYER_MODE_CUSTOM:
+        return str(custom_layer_filter or "").strip()
+    return ""
+
+
+def _clamp_float(value, lo, hi):
+    return max(lo, min(hi, float(value)))
+
+
+def _build_preset_payload(preset_name, intensity=1.0, layer_mode=LAYER_MODE_AUTO,
+                          custom_layer_filter="", normalize_weights=True):
+    preset_name = preset_name if preset_name in PRESET_CHOICES else PRESET_BALANCED
+    intensity = _clamp_float(intensity, 0.0, 2.0)
+    adv = _base_advanced_options()
+    adv["normalize_weights"] = bool(normalize_weights)
+    adv["layer_filter"] = _layer_filter_for_mode(layer_mode, custom_layer_filter)
+
+    payload = {
+        "preset": preset_name,
+        "combine_mode": COMBINE_OUTPUT_AVG,
+        "fusion_mode": FUSION_INTERPOLATE,
+        "strength": 1.0,
+        "advanced_options": adv,
+    }
+
+    if preset_name == PRESET_BALANCED:
+        adv["artist_ema_alpha"] = 0.25
+        payload["strength"] = 1.0
+    elif preset_name == PRESET_STRONG_STYLE:
+        adv["artist_ema_alpha"] = 0.20
+        adv["end_percent"] = 0.92
+        payload["strength"] = 1.65
+    elif preset_name == PRESET_STABLE_SEED:
+        adv["lowrank_k"] = 1
+        adv["artist_static_capture"] = True
+        adv["static_capture_k"] = 6
+        payload["combine_mode"] = COMBINE_LOWRANK_AVG
+        payload["strength"] = 1.15
+    elif preset_name == PRESET_FAST_PREVIEW:
+        adv["end_percent"] = 0.82
+        payload["combine_mode"] = COMBINE_CONCAT
+        payload["fusion_mode"] = FUSION_CONCAT_WITH_BASE
+        payload["strength"] = 1.0
+    elif preset_name == PRESET_IDENTITY_GUARD:
+        adv["artist_ema_alpha"] = 0.35
+        adv["lowrank_k"] = 1
+        payload["combine_mode"] = COMBINE_LOWRANK_AVG
+        payload["fusion_mode"] = FUSION_BASE_PRESERVE
+        payload["strength"] = 1.25
+
+    if preset_name != PRESET_FAST_PREVIEW:
+        payload["strength"] = _clamp_float(payload["strength"] * intensity, 0.0, 4.0)
+    payload["intensity"] = intensity
+    payload["layer_mode"] = layer_mode
+    return payload
+
+
+def _merge_runtime_options(combine_mode, fusion_mode, strength,
+                           advanced_options=None, preset=None):
+    adv = {}
+    preset_name = None
+    if isinstance(preset, dict):
+        preset_name = preset.get("preset")
+        adv.update(preset.get("advanced_options") or {})
+        combine_mode = preset.get("combine_mode", combine_mode)
+        fusion_mode = preset.get("fusion_mode", fusion_mode)
+        strength = preset.get("strength", strength)
+    if isinstance(advanced_options, dict):
+        adv.update(advanced_options)
+    return combine_mode, fusion_mode, float(strength), adv, preset_name
+
+
+def _lowrank_rows_deterministic(d_mat, k):
+    """对行向量做确定性 top-k 低秩重建：D_k = U_k U_k^T D。"""
+    n = int(d_mat.shape[0])
+    if k >= n:
+        return d_mat
+    work = d_mat.to(torch.float32)
+    gram = work @ work.transpose(0, 1)
+    eigvals, eigvecs = torch.linalg.eigh(gram)
+    order = torch.argsort(eigvals, descending=True)
+    basis = eigvecs[:, order[:k]]
+    return basis @ (basis.transpose(0, 1) @ work)
+
+
+def _format_bool(value):
+    return "on" if bool(value) else "off"
 
 
 def _extract(conditioning):
@@ -615,7 +774,7 @@ class _CrossAttnWrapper(nn.Module):
             return self.original(x, context, rope_emb=rope_emb,
                                  transformer_options=transformer_options)
 
-        # n=1 时 lowrank_avg 没有任何意义（SVD 没东西可投影），降级到 output_avg
+        # n=1 时 lowrank_avg 没有任何意义（没有多画师方向可投影），降级到 output_avg
         if combine_mode == COMBINE_LOWRANK_AVG and len(individuals) >= 2:
             return self._fwd_lowrank_avg(
                 x, context, rope_emb, transformer_options,
@@ -806,7 +965,7 @@ class _CrossAttnWrapper(nn.Module):
 
         delta_i = A_i - A_base
         D = stack(delta_i)              # (N, M)
-        D_lowrank = SVD_truncate(D, k)  # 投影到 top-k
+        D_lowrank = topk_rowspace_project(D, k)
         delta_avg = sum(w_i * D_lowrank[i])
         artist_total = A_base + delta_avg
         """
@@ -828,7 +987,7 @@ class _CrossAttnWrapper(nn.Module):
         base_out = self.original(x, context, rope_emb=rope_emb, transformer_options=t_opts)
         out_dtype = base_out.dtype
 
-        # 3. 堆 delta，SVD 全程 fp32
+        # 3. 堆 delta，低秩投影全程 fp32
         A = torch.stack(artist_outs, dim=0).to(torch.float32)   # (N, B, T, D)
         base_f32 = base_out.to(torch.float32).unsqueeze(0)      # (1, B, T, D)
         delta = A - base_f32                                    # (N, B, T, D)
@@ -838,14 +997,11 @@ class _CrossAttnWrapper(nn.Module):
 
         if k < n:
             try:
-                # niter=2 对 small N 已足够稳定；q=k 截断到 top-k
-                U, S, V = torch.svd_lowrank(D_mat, q=k, niter=2)
-                # D_k = U @ diag(S) @ V^T   形状 (N, M)
-                D_lowrank = U @ torch.diag(S) @ V.transpose(-1, -2)
+                D_lowrank = _lowrank_rows_deterministic(D_mat, k)
             except Exception as e:
                 if not self._st.get("_warned_svd", False):
                     logger.warning(
-                        "[AnimaCrossAttn] L%d SVD 失败，本步退化为 output_avg: %s",
+                        "[AnimaCrossAttn] L%d lowrank_avg 失败，本步退化为 output_avg: %s",
                         self._idx, e,
                     )
                     self._st["_warned_svd"] = True
@@ -965,7 +1121,7 @@ def _make_sigma_capture(state, prev_wrapper):
                 pass
 
         # anchor 缓存不随 sigma 跳升失效——同 prompt 跨多 seed 的 fingerprint 一致，走命中分支。
-        # 只有 fingerprint (x.shape, id(base_context)) 变化才重跑 anchor（在 _maybe_run_anchor 里检测）。
+        # 只有 fingerprint (x.shape, id(base_context), first_timestep) 变化才重跑 anchor。
 
         # anchor_q 开启 → 检查缓存是否需要预跑
         if state.get("artist_anchor_q", False) and not state.get("_anchor_failed", False):
@@ -1008,7 +1164,11 @@ def _maybe_run_anchor(state, user_x, user_timestep, c_dict):
             base_context = base_context[:1]
 
     cache_key = state.get("_anchor_cache_key")
-    new_key = (tuple(user_x.shape), id(c_dict.get("context")))
+    try:
+        sigma_key = round(float(user_timestep.flatten()[0].item()), 4)
+    except Exception:
+        sigma_key = None
+    new_key = (tuple(user_x.shape), id(c_dict.get("context")), sigma_key)
     if cache_key == new_key and state.get("_anchor_cache"):
         return  # 命中缓存，不重跑
 
@@ -1259,7 +1419,7 @@ class AnimaArtistOptions:
                     "default": 1, "min": 1, "max": MAX_ARTISTS, "step": 1,
                     "tooltip": (
                         "LoRA 式低秩注入维度（仅 combine_mode=lowrank_avg 生效）。\n"
-                        "对 N 个画师 delta 做 SVD 截断到 top-k 主方向。\n"
+                        "对 N 个画师 delta 做确定性低秩投影，截断到 top-k 主方向。\n"
                         "k=1: 所有画师沿单一共识方向，跨 seed 最稳，画风最同质\n"
                         "k=2-3: 保留主要画风方向，画师间允许少量差异（推荐范围）\n"
                         "k>=N: 等价于 output_avg（不投影）\n"
@@ -1394,6 +1554,185 @@ class AnimaArtistOptions:
         },)
 
 
+class AnimaArtistPreset:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "preset": (PRESET_CHOICES, {
+                    "default": PRESET_BALANCED,
+                    "tooltip": (
+                        "一键工作模式。\n"
+                        "balanced: 推荐默认，轻 EMA，画风稳定但不过度保守\n"
+                        "strong_style: 更浓画风，strength 外推到 1.65\n"
+                        "stable_seed: lowrank + static capture，优先跨 seed 稳定\n"
+                        "fast_preview: concat 路径，优先速度，适合找图\n"
+                        "identity_guard: base_preserve + lowrank，尽量保主 prompt 身份/构图"
+                    ),
+                }),
+                "intensity": ("FLOAT", {
+                    "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
+                    "tooltip": "预设强度倍率。fast_preview 不使用 strength，其他预设会乘到 strength 上。",
+                }),
+                "normalize_weights": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "预设里的默认 normalize_weights。artist_chain 若用了 ::weight，运行时仍会自动关闭。",
+                }),
+                "layer_mode": (LAYER_MODE_CHOICES, {
+                    "default": LAYER_MODE_AUTO,
+                    "tooltip": (
+                        "层范围快捷选择。\n"
+                        "auto/all_layers: 全层\n"
+                        "style_core: 0-18，偏整体画风\n"
+                        "detail_layers: 12-63，偏细节和笔触\n"
+                        "custom: 使用 custom_layer_filter"
+                    ),
+                }),
+                "custom_layer_filter": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "layer_mode=custom 时生效。例: 0,3,5-10,-1",
+                }),
+            },
+        }
+
+    RETURN_TYPES = ("ANIMA_PRESET", "ANIMA_OPTS", "STRING")
+    RETURN_NAMES = ("preset", "advanced_options", "summary")
+    FUNCTION = "build"
+    CATEGORY = "Anima/CrossAttn"
+
+    def build(self, preset, intensity, normalize_weights, layer_mode, custom_layer_filter):
+        payload = _build_preset_payload(
+            preset, intensity, layer_mode, custom_layer_filter, normalize_weights,
+        )
+        adv = payload["advanced_options"]
+        summary = "\n".join([
+            f"Preset: {payload['preset']}",
+            f"combine_mode: {payload['combine_mode']}",
+            f"fusion_mode: {payload['fusion_mode']}",
+            f"strength: {payload['strength']:.2f}",
+            f"normalize_weights: {_format_bool(adv.get('normalize_weights', True))}",
+            f"EMA alpha: {float(adv.get('artist_ema_alpha', 0.0)):.2f}",
+            f"lowrank_k: {int(adv.get('lowrank_k', 1))}",
+            f"static_capture: {_format_bool(adv.get('artist_static_capture', False))}",
+            f"static_capture_k: {int(adv.get('static_capture_k', _STATIC_CAPTURE_K_DEFAULT))}",
+            f"layer_filter: {adv.get('layer_filter') or 'all'}",
+        ])
+        return {"ui": {"text": [summary]}, "result": (payload, adv, summary)}
+
+
+class AnimaArtistInspector:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "artist_pack": ("ANIMA_PACK",),
+            },
+            "optional": {
+                "combine_mode": (
+                    [COMBINE_CONCAT, COMBINE_OUTPUT_AVG, COMBINE_LOWRANK_AVG],
+                    {"default": COMBINE_OUTPUT_AVG},
+                ),
+                "fusion_mode": (
+                    [FUSION_INTERPOLATE, FUSION_CONCAT_WITH_BASE, FUSION_BASE_PRESERVE],
+                    {"default": FUSION_INTERPOLATE},
+                ),
+                "strength": ("FLOAT", {
+                    "default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05,
+                }),
+                "advanced_options": ("ANIMA_OPTS",),
+                "preset": ("ANIMA_PRESET",),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("report",)
+    FUNCTION = "inspect"
+    CATEGORY = "Anima/CrossAttn"
+    OUTPUT_NODE = True
+
+    def inspect(self, artist_pack, combine_mode=COMBINE_OUTPUT_AVG,
+                fusion_mode=FUSION_INTERPOLATE, strength=1.0,
+                advanced_options=None, preset=None):
+        if not isinstance(artist_pack, dict):
+            report = "Anima Artist Inspector\nERROR: artist_pack 不是有效的 ANIMA_PACK。"
+            return {"ui": {"text": [report]}, "result": (report,)}
+
+        labels = list(artist_pack.get("labels") or [])
+        weights = artist_pack.get("weights")
+        if not isinstance(weights, (list, tuple)) or len(weights) != len(labels):
+            weights = [1.0] * len(labels)
+        weights = [float(w) for w in weights]
+        has_explicit = bool(artist_pack.get("has_explicit_weights", False))
+        base_prompt = str(artist_pack.get("base_prompt", "") or "")
+
+        combine_mode, fusion_mode, strength, adv, preset_name = _merge_runtime_options(
+            combine_mode, fusion_mode, strength, advanced_options, preset,
+        )
+        requested_normalize = bool(adv.get("normalize_weights", True))
+        effective_normalize = requested_normalize and not has_explicit
+        weight_sum = sum(abs(w) for w in weights)
+
+        lines = [
+            "Anima Artist Mixer Inspector",
+            "",
+            f"preset: {preset_name or '(none)'}",
+            f"artists: {len(labels)}",
+            f"base_prompt: {'yes' if base_prompt else 'empty'}",
+            f"combine_mode: {combine_mode}",
+            f"fusion_mode: {fusion_mode}",
+            f"strength: {float(strength):.2f}",
+            f"requested normalize_weights: {_format_bool(requested_normalize)}",
+            f"effective normalize_weights: {_format_bool(effective_normalize)}",
+            f"effective linear weight sum: {weight_sum:.3f}",
+            f"layer_filter: {adv.get('layer_filter') or 'all'}",
+            f"sigma range percent: {float(adv.get('start_percent', 0.0)):.3f} - "
+            f"{float(adv.get('end_percent', 1.0)):.3f}",
+            f"EMA alpha: {float(adv.get('artist_ema_alpha', 0.0)):.2f}",
+            f"lowrank_k: {int(adv.get('lowrank_k', 1))}",
+            f"static_capture: {_format_bool(adv.get('artist_static_capture', False))} "
+            f"(K={int(adv.get('static_capture_k', _STATIC_CAPTURE_K_DEFAULT))})",
+            f"anchor_q: {_format_bool(adv.get('artist_anchor_q', False))}",
+            "",
+            "artists:",
+        ]
+
+        if labels:
+            for idx, (label, weight) in enumerate(zip(labels, weights), start=1):
+                lines.append(f"  {idx}. {label} :: {weight:.3g}")
+        else:
+            lines.append("  (none)")
+
+        warnings = []
+        if not labels:
+            warnings.append("没有画师；CrossAttn 会原样返回 base prompt。")
+        if has_explicit and requested_normalize:
+            warnings.append("检测到 ::weight；运行时会自动关闭 normalize_weights，这是正确行为。")
+        if not effective_normalize and weight_sum > 1.5:
+            warnings.append("线性权重和 > 1.5，画风可能过浓或过曝。")
+        if (
+            adv.get("artist_static_capture", False)
+            and adv.get("artist_anchor_q", False)
+        ):
+            warnings.append("static_capture 与 anchor_q 互斥；CrossAttn 会关闭 static_capture。")
+        if fusion_mode == FUSION_CONCAT_WITH_BASE and adv.get("artist_anchor_q", False):
+            warnings.append("concat_with_base 不支持 anchor_q；CrossAttn 会关闭 anchor_q。")
+        if fusion_mode == FUSION_CONCAT_WITH_BASE and adv.get("artist_static_capture", False):
+            warnings.append("concat_with_base 不支持 static_capture；会退回普通路径。")
+        if combine_mode == COMBINE_LOWRANK_AVG and len(labels) <= 1:
+            warnings.append("只有 1 个画师时 lowrank_avg 没意义，会自动按 output_avg 工作。")
+
+        lines.append("")
+        lines.append("warnings:")
+        if warnings:
+            lines.extend(f"  - {w}" for w in warnings)
+        else:
+            lines.append("  - no obvious configuration risk")
+
+        report = "\n".join(lines)
+        return {"ui": {"text": [report]}, "result": (report,)}
+
+
 
 
 
@@ -1443,6 +1782,7 @@ class AnimaArtistCrossAttn:
             },
             "optional": {
                 "advanced_options": ("ANIMA_OPTS",),
+                "preset": ("ANIMA_PRESET",),
             },
         }
 
@@ -1452,8 +1792,10 @@ class AnimaArtistCrossAttn:
     CATEGORY = "Anima/CrossAttn"
 
     def patch(self, model, artist_pack, combine_mode, fusion_mode,
-              strength, enabled, apply_to_uncond, advanced_options=None):
-        adv = advanced_options or {}
+              strength, enabled, apply_to_uncond, advanced_options=None, preset=None):
+        combine_mode, fusion_mode, strength, adv, preset_name = _merge_runtime_options(
+            combine_mode, fusion_mode, strength, advanced_options, preset,
+        )
         sb = int(adv.get("start_block", 0))
         eb = int(adv.get("end_block", -1))
         start_percent = float(adv.get("start_percent", 0.0))
@@ -1555,6 +1897,12 @@ class AnimaArtistCrossAttn:
             user_weights = [1.0] * n
             has_explicit_weights = False
 
+        if has_explicit_weights and normalize_w:
+            normalize_w = False
+            logger.info(
+                "[AnimaCrossAttn] 检测到 ::weight 显式线性权重，normalize_weights 自动关闭。"
+            )
+
         # base_preserve 在 strength 很小（<0.3）时几乎无效（垂直分量 × 小系数 = 微小偏移），
         # 在 strength=1.0 时也仍然是「不强制对齐 artist」；这是设计目标。
         # 这里只做提示，不做强限制。
@@ -1576,22 +1924,23 @@ class AnimaArtistCrossAttn:
 
 
         if not normalize_w and n > 1 and combine_mode in (COMBINE_OUTPUT_AVG, COMBINE_LOWRANK_AVG):
-            if n >= 4:
+            effective_weight_sum = sum(abs(w) for w in user_weights)
+            if effective_weight_sum >= 4.0 and not has_explicit_weights:
                 raise ValueError(
-                    f"[AnimaCrossAttn] normalize_weights=False 且画师数={n} (有效权重和也是 {n}，"
-                    f"远超合理范围)。当前 combine={combine_mode} 下这会使 cross-attn 输出被放大 ~{n} 倍，"
+                    f"[AnimaCrossAttn] normalize_weights=False 且画师数={n} "
+                    f"(有效权重和={effective_weight_sum:.2f}，远超合理范围)。"
+                    f"当前 combine={combine_mode} 下这会使 cross-attn 输出被明显放大，"
                     f"几乎必崩。\n"
                     f"改进方案 (任选一)：\n"
                     f"  1) AnimaArtistOptions 里把 normalize_weights 改为 True（推荐）\n"
-                    f"  2) AnimaArtistPack 的 artist_chain 中用 (name:0.3) 内联调低单个强度\n"
+                    f"  2) AnimaArtistPack 的 artist_chain 中用 ::name::0.25 调低线性强度\n"
                     f"  3) combine_mode 改用 concat (不走加权和逻辑)"
                 )
-            elif n >= 2:
+            elif effective_weight_sum > 1.5:
                 logger.warning(
-                    "[AnimaCrossAttn] normalize_weights=False 且画师数=%d (combine=%s)，"
-                    "cross-attn 输出会被放大 ~%d 倍，可能过曝。如出问题请改用 "
-                    "normalize_weights=True 或 combine=concat。",
-                    n, combine_mode, n,
+                    "[AnimaCrossAttn] normalize_weights=False 且有效权重和=%.2f (artists=%d, combine=%s)，"
+                    "cross-attn 输出可能过强。如出问题请降低 ::weight、启用 normalize 或改用 concat。",
+                    effective_weight_sum, n, combine_mode,
                 )
 
 
@@ -1649,6 +1998,7 @@ class AnimaArtistCrossAttn:
             "user_weights": user_weights,
             "normalize_weights": normalize_w,
             "has_explicit_weights": has_explicit_weights,
+            "preset_name": preset_name,
             "artist_ema_alpha": artist_ema_alpha,
             "lowrank_k": lowrank_k,
             "artist_static_capture": artist_static_capture,
@@ -1693,10 +2043,14 @@ NODE_CLASS_MAPPINGS = {
     "AnimaArtistPack": AnimaArtistPack,
     "AnimaArtistCrossAttn": AnimaArtistCrossAttn,
     "AnimaArtistOptions": AnimaArtistOptions,
+    "AnimaArtistPreset": AnimaArtistPreset,
+    "AnimaArtistInspector": AnimaArtistInspector,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "AnimaArtistPack": "Anima Artist Pack (Split + Encode)",
     "AnimaArtistCrossAttn": "Anima Artist Cross-Attn (v2)",
     "AnimaArtistOptions": "Anima Artist Options (Advanced)",
+    "AnimaArtistPreset": "Anima Artist Preset (One Knob)",
+    "AnimaArtistInspector": "Anima Artist Inspector",
 }

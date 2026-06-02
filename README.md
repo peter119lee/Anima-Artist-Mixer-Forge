@@ -9,7 +9,7 @@ Anima uses an LLM as its text encoder. When multiple artist tags are stacked in 
 
 The bundled `AnimaArtistPack` node provides a one-shot experience: write your artist list (separated by commas or newlines) in one text box, your main prompt in another, and the node handles splitting, encoding, and packaging automatically.
 
-The current release (v24) adds layered cross-seed stabilizers, CFG-style strength extrapolation, and a new linear injection-layer weight syntax `::name::weight`.
+The current release (v25) adds one-click presets, an in-UI inspector, deterministic low-rank mixing, safer explicit weights, layered cross-seed stabilizers, CFG-style strength extrapolation, and the linear injection-layer weight syntax `::name::weight`.
 
 ## Quick links
 
@@ -45,21 +45,36 @@ Restart ComfyUI. No extra dependencies.
 
 [Load Anima Model] ──► MODEL ──► AnimaArtistCrossAttn
 
+(optional) AnimaArtistPreset  ──► preset ────────────► AnimaArtistCrossAttn
 (optional) AnimaArtistOptions ──► advanced_options ──► AnimaArtistCrossAttn
+(optional) AnimaArtistInspector ◄── artist_pack / preset / advanced_options
 ```
 
 - Top text box of `AnimaArtistPack`: your artist chain (comma or newline separated)
 - Bottom text box: the main prompt (no need to repeat artist names here)
 - Wire `AnimaArtistCrossAttn`'s `base_prompt` output directly to KSampler's positive input
+- For a sane first run, connect `AnimaArtistPreset` with `preset = balanced`
+- When a workflow behaves strangely, connect `AnimaArtistInspector` and read the effective weights / warnings directly in ComfyUI
 
 For full parameter explanations and recommended combinations, see [docs/USAGE.md](docs/USAGE.md).
 
 ## Recommended defaults
 
+For most users, start with:
+
+```
+AnimaArtistPreset:
+preset    = balanced
+intensity = 1.0
+```
+
+Manual equivalent:
+
 ```
 combine_mode = output_avg
 fusion_mode  = interpolate
 strength     = 1.0
+artist_ema_alpha = 0.25
 ```
 
 To weight individual artists within the chain, use either of two syntaxes (they can coexist and stack):
@@ -69,18 +84,19 @@ wlop, ::sakimichan::1.2, (krenz:0.7)
 ```
 
 - `(name:1.2)` — CLIP-side weighting (same as SD/A1111), non-linear, applied at text encoding
-- `::name::1.2` — injection-side weighting (v24), linear and predictable, applied at cross-attention output
+- `::name::1.2` — injection-side weighting (v24+), linear and predictable, applied at cross-attention output
+- In v25, any valid `::weight` automatically disables normalization at runtime so explicit weights stay absolute
 
 ## Cross-seed stability
 
 In multi-artist setups, the same prompt with different seeds tends to produce noticeably different style mixes — sometimes one artist dominates, other times another, even at equal weights. This is structural to how cross-attention interacts with seed-driven hidden state.
 
-v24 provides four optional stabilizers via `AnimaArtistOptions`, ordered from light to heavy:
+v25 provides four optional stabilizers via `AnimaArtistOptions`, ordered from light to heavy:
 
 | Stabilizer | Strength | Notes |
 |---|---|---|
 | `artist_ema_alpha` | light | Temporal EMA across sampling steps |
-| `combine_mode = lowrank_avg` + `lowrank_k` | medium | SVD low-rank constraint on multi-artist deltas |
+| `combine_mode = lowrank_avg` + `lowrank_k` | medium | Deterministic low-rank constraint on multi-artist deltas |
 | `artist_static_capture` + `static_capture_k` | heavy | Freeze artist attention after K warmup steps (also a 30-50% speedup) |
 | `artist_anchor_q` | heaviest | Replace user-seed Q with a fixed-seed anchor's Q (near-full cross-seed decoupling) |
 
