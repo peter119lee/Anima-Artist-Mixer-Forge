@@ -86,6 +86,12 @@ wlop, ::sakimichan::1.2, (krenz:0.7)
 - `(name:1.2)` — CLIP-side weighting (same as SD/A1111), non-linear, applied at text encoding
 - `::name::1.2` — injection-side weighting (v24+), linear and predictable, applied at cross-attention output
 - In v25, any valid `::weight` automatically disables normalization at runtime so explicit weights stay absolute
+- Per-artist layer routing is supported with `@layers`: `wlop@0-8, krenz@9-18, hiten@19-27`
+- Anima artist tags that start with `@` are safe: `@wlop` remains the artist name; only a final numeric suffix like `@0-8` is treated as layer routing
+
+## Compatibility notes
+
+This node wraps Anima cross-attention. Other nodes that also patch attention, regional prompts, Forge Couple-style routing, or model forward wrappers can change the same execution path. If the artist effect disappears or becomes very weak, first try `combine_mode = concat`, disable cache-heavy stabilizers, or reduce other attention-patching nodes in the same workflow. Use `AnimaArtistInspector` to confirm the parsed artists, weights, layer routes, and effective normalize state.
 
 ## Cross-seed stability
 

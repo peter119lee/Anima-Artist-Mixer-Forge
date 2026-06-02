@@ -8,6 +8,8 @@ The companion `AnimaArtistPack` node provides a one-shot experience: write your 
 
 This README documents the **v25 architecture**, which adds one-click presets, an in-UI inspector, deterministic low-rank mixing, safer explicit weights, layered cross-seed stabilization (EMA / low-rank / static-capture / anchor-Q), CFG-style strength extrapolation, and the linear injection-layer weight syntax `::name::weight`. Older versions are still functionally a subset.
 
+v25.1 also adds per-artist layer routing, matching the original repository's first public feature request: different artists can now be injected into different DiT block ranges from the same artist chain.
+
 ## What problem it solves
 
 Anima uses an LLM as its text encoder (unlike SDXL's CLIP). LLM encoders are heavily **contextualized** — every token's embedding fuses semantics from surrounding tokens. This has a direct consequence:
@@ -180,6 +182,7 @@ Connect `artist_pack`, and optionally the same `preset` / `advanced_options` use
 
 - parsed artist labels
 - parsed linear `::weight` values
+- per-artist layer routes
 - requested vs effective `normalize_weights`
 - effective linear weight sum
 - preset, fusion, combine, strength, layer filter, stabilizer settings
@@ -466,6 +469,34 @@ When any artist uses `::weight` syntax, `normalize_weights` is automatically byp
 
 Global artist contribution is controlled by `AnimaArtistCrossAttn`'s `strength` (independent of per-artist weights).
 
+### Per-artist layer routing
+
+Add `@layer_filter` at the end of an artist entry to make that artist active only on selected DiT blocks:
+
+```
+wlop@0-8
+::sakimichan::1.2@9-18
+::(krenz:1.1)::0.8@19-27
+```
+
+Artist tags that already start with `@` still work. For example, `@wlop` is treated as the artist name, while `@wlop@0-8` means artist `@wlop` routed to blocks `0-8`. The parser only treats the final `@...` segment as a route when it contains layer-filter characters (`0-9`, comma, dash, spaces, or Chinese comma).
+
+Layer filters use the same syntax as `AnimaArtistOptions.layer_filter`: comma-separated indices, ranges, and negative indices. Examples:
+
+```
+0-8
+9,12,15
+14-27,-1
+```
+
+This solves the "different artists mixed into different layers" workflow:
+
+- early blocks (`0-8`): composition and global style
+- middle blocks (`9-18`): character/body/shape bias
+- late blocks (`19-27`): details, finish, brushwork
+
+If a layer has no matching artist after routing, that layer falls back to the original cross-attention. Global `layer_filter` still applies first: the node only patches the selected global layers, then per-artist routes decide which artists participate inside those patched layers.
+
 ### Important note on heavy weights
 
 Do **not** push both `strength` and multiple `::weight` values high at once when you have many artists. Cross-attn output magnitude is roughly `strength * sum(::weight)`, which becomes unstable past ~6-8x baseline. Symptoms: oversaturation, noise patches, or fully broken output. Default values (`strength=1`, no `::weight`) are always safe.
@@ -532,6 +563,29 @@ When sampling-step range or any cross-seed stabilizer is enabled, this node uses
 However, if another custom node connected **after** this one sets a wrapper without chain-safety (overwriting blindly), the sigma capture is lost, and step-range / EMA-reset / static-capture-reset all silently degrade.
 
 Diagnosis: reset `start_percent / end_percent` to 0.0 / 1.0 and disable all stabilizers; if behavior recovers, another node is overwriting the wrapper.
+
+### Cross-attention patch conflicts
+
+This node replaces `diffusion_model.blocks[i].cross_attn` through ComfyUI object patches. Nodes that also rewrite the same cross-attention modules can interact in non-obvious ways:
+
+- regional prompting / area composition nodes
+- Forge Couple-style prompt routing ports
+- attention replacement or attention masking nodes
+- other custom nodes that patch `diffusion_model.blocks.*.cross_attn`
+
+Symptoms:
+
+- artist effect becomes weak or disappears
+- batched artist path falls back to serial mode
+- `output_avg` looks much weaker than `concat`
+- cache-based stabilizers stop matching across passes
+
+Practical fixes:
+
+- try `combine_mode = concat` first; it is more tolerant when regional prompts dominate
+- disable `artist_static_capture` and `artist_anchor_q` while debugging compatibility
+- use `AnimaArtistInspector` to confirm the parsed artists, weights, and per-artist layer routes
+- simplify the workflow until this node is the only cross-attention patcher, then add other nodes back one at a time
 
 ## Acknowledgements
 

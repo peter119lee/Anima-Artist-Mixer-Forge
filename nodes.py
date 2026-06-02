@@ -386,6 +386,42 @@ def _parse_artist_weights(parts):
     return names, weights, has_explicit
 
 
+def _parse_artist_layer_route(name):
+    """解析单个画师末尾的 @layer_filter 路由语法。
+
+    例:
+      wlop@0-8
+      ::wlop::1.2@0-8
+      (krenz:1.1)@12-27
+
+    注意：只认最后一个 @，所以带 @ 的普通 artist tag 仍可通过不写路由来使用。
+    """
+    s = str(name or "").strip()
+    if not s or "@" not in s:
+        return s, ""
+    base, route = s.rsplit("@", 1)
+    route = route.strip()
+    if not route:
+        return s, ""
+    # layer_filter 只接受数字、负号、逗号、空格和区间符号；否则当普通 artist 文本保留。
+    allowed = set("0123456789,- ，")
+    if all(ch in allowed for ch in route):
+        base = base.strip()
+        if base:
+            return base, route
+    return s, ""
+
+
+def _parse_artist_layer_routes(names):
+    clean_names = []
+    routes = []
+    for name in names:
+        clean, route = _parse_artist_layer_route(name)
+        clean_names.append(clean)
+        routes.append(route)
+    return clean_names, routes
+
+
 def _parse_layer_filter(text, num_blocks):
     if not text:
         return None
@@ -430,6 +466,19 @@ def _normalize_weights(weights):
     if total <= 1e-8:
         return [1.0 / len(weights)] * len(weights)
     return [w / total for w in weights]
+
+
+def _resolve_artist_layer_routes(route_texts, num_blocks):
+    routes = []
+    has_routes = False
+    for route in route_texts or []:
+        parsed = _parse_layer_filter(route, num_blocks)
+        if parsed is not None:
+            has_routes = True
+            routes.append(set(parsed))
+        else:
+            routes.append(None)
+    return routes, has_routes
 
 
 def _project_perpendicular(delta, base):
@@ -724,9 +773,10 @@ class _CrossAttnWrapper(nn.Module):
         return out
 
 
-    def forward(self, x, context=None, rope_emb=None, transformer_options={}):
+    def forward(self, x, context=None, rope_emb=None, transformer_options=None):
 
         st = self._st
+        transformer_options = transformer_options or {}
 
         # 路 2 anchor 预跑期间：capture 当前输入 x 到 anchor 缓存，走原始 cross_attn
         if st.get("_in_anchor_run", False):
@@ -765,6 +815,18 @@ class _CrossAttnWrapper(nn.Module):
         fusion_mode = st["fusion_mode"]
         strength = float(st["strength"])
         weights = st["user_weights"]
+        if st.get("has_artist_layer_routes", False):
+            routes = st.get("artist_layer_routes") or []
+            filtered = [
+                (artist, weight)
+                for artist, weight, route in zip(individuals, weights, routes)
+                if route is None or self._idx in route
+            ]
+            if not filtered:
+                return self.original(x, context, rope_emb=rope_emb,
+                                     transformer_options=transformer_options)
+            individuals = [item[0] for item in filtered]
+            weights = [item[1] for item in filtered]
 
         cou = transformer_options.get("cond_or_uncond") if isinstance(transformer_options, dict) else None
         bsz = context.shape[0]
@@ -1292,6 +1354,7 @@ class AnimaArtistPack:
                         "\n"
                         "默认 weight=1.0。范围 [0.0, 4.0]。\n"
                         "::weight 与 括号可以叠加: ::(wlop:1.1)::0.8\n"
+                        "可选每画师层路由: wlop@0-8, krenz@9-18, hiten@19-27\n"
                         "\n"
                         "任何画师指定了 ::weight 后，normalize_weights 自动失效\n"
                         "（尊重用户输入的按重）。"
@@ -1315,6 +1378,7 @@ class AnimaArtistPack:
 
     def pack(self, clip, artist_chain, base_prompt=""):
         parts = _split_artist_chain(artist_chain)
+        parts, layer_routes = _parse_artist_layer_routes(parts)
         names, parsed_weights, has_explicit = _parse_artist_weights(parts)
         base = (base_prompt or "").strip()
 
@@ -1331,6 +1395,7 @@ class AnimaArtistPack:
                 "conditionings": [],
                 "labels": [],
                 "weights": [],
+                "layer_routes": [],
                 "has_explicit_weights": False,
                 "base_prompt": base,
                 "base_conditioning": base_conditioning,
@@ -1343,6 +1408,7 @@ class AnimaArtistPack:
             )
             names = names[:MAX_ARTISTS]
             parsed_weights = parsed_weights[:MAX_ARTISTS]
+            layer_routes = layer_routes[:MAX_ARTISTS]
 
         conditionings = []
         for name in names:
@@ -1366,6 +1432,7 @@ class AnimaArtistPack:
             "conditionings": conditionings,
             "labels": names,
             "weights": parsed_weights,
+            "layer_routes": layer_routes,
             "has_explicit_weights": has_explicit,
             "base_prompt": base,
             "base_conditioning": base_conditioning,
@@ -1663,6 +1730,9 @@ class AnimaArtistInspector:
         if not isinstance(weights, (list, tuple)) or len(weights) != len(labels):
             weights = [1.0] * len(labels)
         weights = [float(w) for w in weights]
+        layer_routes = artist_pack.get("layer_routes")
+        if not isinstance(layer_routes, (list, tuple)) or len(layer_routes) != len(labels):
+            layer_routes = [""] * len(labels)
         has_explicit = bool(artist_pack.get("has_explicit_weights", False))
         base_prompt = str(artist_pack.get("base_prompt", "") or "")
 
@@ -1698,8 +1768,9 @@ class AnimaArtistInspector:
         ]
 
         if labels:
-            for idx, (label, weight) in enumerate(zip(labels, weights), start=1):
-                lines.append(f"  {idx}. {label} :: {weight:.3g}")
+            for idx, (label, weight, route) in enumerate(zip(labels, weights, layer_routes), start=1):
+                route_text = f" @ {route}" if route else ""
+                lines.append(f"  {idx}. {label} :: {weight:.3g}{route_text}")
         else:
             lines.append("  (none)")
 
@@ -1721,6 +1792,12 @@ class AnimaArtistInspector:
             warnings.append("concat_with_base 不支持 static_capture；会退回普通路径。")
         if combine_mode == COMBINE_LOWRANK_AVG and len(labels) <= 1:
             warnings.append("只有 1 个画师时 lowrank_avg 没意义，会自动按 output_avg 工作。")
+        if any(str(route or "").strip() for route in layer_routes):
+            warnings.append("已启用每画师层路由；同层无匹配画师时该层会回退原始 cross-attn。")
+        warnings.append(
+            "兼容提醒：区域提示/Forge Couple/其它 cross-attn patch 节点可能覆盖或削弱本节点；"
+            "若效果消失，先改用 concat 或减少其它 attention patch 节点。"
+        )
 
         lines.append("")
         lines.append("warnings:")
@@ -1863,6 +1940,7 @@ class AnimaArtistCrossAttn:
 
         conditionings = artist_pack.get("conditionings") or []
         labels = artist_pack.get("labels") or []
+        layer_route_texts = artist_pack.get("layer_routes") or []
 
         base_cond_out = artist_pack.get("base_conditioning")
         if base_cond_out is None:
@@ -1957,6 +2035,14 @@ class AnimaArtistCrossAttn:
         if not hasattr(dm, "preprocess_text_embeds"):
             raise ValueError("[AnimaCrossAttn] 不是 Anima")
 
+        artist_layer_routes, has_artist_layer_routes = _resolve_artist_layer_routes(
+            layer_route_texts, num_blocks,
+        )
+        if len(artist_layer_routes) < n:
+            artist_layer_routes.extend([None] * (n - len(artist_layer_routes)))
+        elif len(artist_layer_routes) > n:
+            artist_layer_routes = artist_layer_routes[:n]
+
         explicit_blocks = _parse_layer_filter(layer_filter_text, num_blocks)
         if explicit_blocks is not None:
             target_blocks = explicit_blocks
@@ -1996,6 +2082,9 @@ class AnimaArtistCrossAttn:
             "ids_list": ids_list,
             "w_list": w_list,
             "user_weights": user_weights,
+            "labels": labels,
+            "artist_layer_routes": artist_layer_routes,
+            "has_artist_layer_routes": has_artist_layer_routes,
             "normalize_weights": normalize_w,
             "has_explicit_weights": has_explicit_weights,
             "preset_name": preset_name,
