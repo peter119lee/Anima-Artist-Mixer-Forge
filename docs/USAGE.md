@@ -10,7 +10,7 @@ This README documents the **v25 architecture**, which adds one-click presets, an
 
 v25.1 also adds per-artist layer routing, matching the original repository's first public feature request: different artists can now be injected into different DiT block ranges from the same artist chain.
 
-v25.2 adds per-artist sampling timing, a `compatibility_safe` preset, Inspector block maps, and runtime warnings for suspicious cross-attention / model-wrapper conflicts.
+v25.2 adds per-artist sampling timing, a `compatibility_safe` preset, Inspector block maps, runtime warnings for suspicious cross-attention / model-wrapper conflicts, and UX helper nodes for building or previewing artist chains before CLIP encoding.
 
 ## What problem it solves
 
@@ -107,12 +107,16 @@ Restart ComfyUI. No extra dependencies.
 
 [Load Anima Model] ──► MODEL ──► AnimaArtistCrossAttn
 
+(optional) AnimaArtistChainBuilder ──► artist_chain ──► AnimaArtistPack
+(optional) AnimaArtistChainPreview ──► cleaned_chain / syntax report
 (optional) AnimaArtistPreset  ──► preset ────────────► AnimaArtistCrossAttn
 (optional) AnimaArtistOptions ──► advanced_options ──► AnimaArtistCrossAttn
 (optional) AnimaArtistInspector ◄── artist_pack / preset / advanced_options
 ```
 
 Key points:
+- Use `AnimaArtistChainBuilder` for the fastest safe setup: enter up to three artists, pick a layout, then connect its `artist_chain` output into `AnimaArtistPack`
+- Use `AnimaArtistChainPreview` when hand-writing chains; it catches syntax mistakes before CLIP encoding
 - Write your artist chain in `AnimaArtistPack`'s top text box (comma or newline separated)
 - Write your main prompt in the bottom text box
 - Connect `AnimaArtistCrossAttn`'s `base_prompt` output directly to KSampler's positive input
@@ -123,6 +127,35 @@ Key points:
 - Use `AnimaArtistInspector` to show the actual effective weights, block map, preset settings, and configuration warnings inside ComfyUI
 
 ## Parameters
+
+### AnimaArtistChainBuilder (UX helper)
+
+This is the easiest way to build a correct chain without memorizing syntax. It outputs a ready-to-connect `artist_chain` string plus a preview report.
+
+| Layout | Behavior |
+|---|---|
+| `manual` | Uses the custom layer/timing fields exactly as entered |
+| `even_layers` | Evenly splits available DiT blocks across the non-empty artists |
+| `layer_scheduled` | Uses a three-stage recipe: early/mid/late layers plus early/mid/late sampling windows |
+
+For `layer_scheduled`, the default rows are:
+
+| Row | Blocks | Timing | Typical role |
+|---|---|---|---|
+| artist 1 | `0-8` | `0.0-0.45` | composition / global style |
+| artist 2 | `9-18` | `0.35-0.85` | structure / character bias |
+| artist 3 | `19-27` | `0.65-1.0` | detail / brushwork |
+
+### AnimaArtistChainPreview (syntax check)
+
+Preview takes any hand-written `artist_chain` and reports:
+
+- parsed artists and injection weights
+- parsed `@layers` and `%timing`
+- a block map
+- warnings for invalid timing, risky explicit weights, or truncation
+
+It does not need CLIP or a model. Use it before `AnimaArtistPack` when experimenting with complex chains.
 
 ### AnimaArtistPack (artist chain split + encode)
 

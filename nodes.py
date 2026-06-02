@@ -195,6 +195,16 @@ LAYER_MODE_CHOICES = [
     LAYER_MODE_CUSTOM,
 ]
 
+CHAIN_LAYOUT_MANUAL = "manual"
+CHAIN_LAYOUT_EVEN_LAYERS = "even_layers"
+CHAIN_LAYOUT_LAYER_SCHEDULED = "layer_scheduled"
+
+CHAIN_LAYOUT_CHOICES = [
+    CHAIN_LAYOUT_MANUAL,
+    CHAIN_LAYOUT_EVEN_LAYERS,
+    CHAIN_LAYOUT_LAYER_SCHEDULED,
+]
+
 
 def _base_advanced_options():
     return {
@@ -718,6 +728,171 @@ def _format_artist_block_map(labels, layer_route_texts, timing_texts,
         names = ", ".join(active) if active else "(original cross-attn)"
         lines.append(f"  {_format_layer_span(start, end)}: {names}")
     return "\n".join(lines)
+
+
+def _sanitize_artist_name_for_builder(name):
+    return str(name or "").strip()
+
+
+def _format_weighted_artist_name(name, weight):
+    weight = _clamp_float(weight, 0.0, 4.0)
+    if abs(weight - 1.0) <= 1e-6:
+        return name
+    return f"::{name}::{weight:.3g}"
+
+
+def _default_builder_routes(layout, count, num_blocks):
+    count = max(0, int(count))
+    if count <= 0:
+        return [], []
+    num_blocks = max(1, int(num_blocks))
+    if layout == CHAIN_LAYOUT_EVEN_LAYERS:
+        routes = []
+        for idx in range(count):
+            lo = int(round(idx * num_blocks / count))
+            hi = int(round((idx + 1) * num_blocks / count)) - 1
+            routes.append(f"{lo}-{max(lo, hi)}")
+        return routes, [""] * count
+    if layout == CHAIN_LAYOUT_LAYER_SCHEDULED:
+        route_templates = ["0-8", "9-18", "19-27"]
+        timing_templates = ["0.0-0.45", "0.35-0.85", "0.65-1.0"]
+        routes = []
+        timings = []
+        for idx in range(count):
+            if idx < len(route_templates):
+                parsed = _parse_layer_filter(route_templates[idx], num_blocks)
+                if parsed is None:
+                    routes.append("")
+                else:
+                    routes.append(f"{parsed[0]}-{parsed[-1]}")
+                timings.append(timing_templates[idx])
+            else:
+                routes.append("")
+                timings.append("")
+        return routes, timings
+    return [""] * count, [""] * count
+
+
+def _build_artist_chain_from_rows(layout, rows, num_blocks=28):
+    cleaned_rows = []
+    for name, weight, layer_route, timing_route in rows:
+        name = _sanitize_artist_name_for_builder(name)
+        if not name:
+            continue
+        cleaned_rows.append((name, float(weight), str(layer_route or "").strip(),
+                             str(timing_route or "").strip()))
+    routes, timings = _default_builder_routes(layout, len(cleaned_rows), num_blocks)
+    entries = []
+    labels = []
+    weights = []
+    layer_routes = []
+    timing_routes = []
+    warnings = []
+    for idx, (name, weight, layer_route, timing_route) in enumerate(cleaned_rows):
+        if layout != CHAIN_LAYOUT_MANUAL:
+            if not layer_route and idx < len(routes):
+                layer_route = routes[idx]
+            if not timing_route and idx < len(timings):
+                timing_route = timings[idx]
+        if layer_route and _parse_layer_filter(layer_route, num_blocks) is None:
+            warnings.append(f"invalid layer route ignored for {name}: {layer_route}")
+            layer_route = ""
+        if timing_route and _parse_timing_filter(timing_route) is None:
+            warnings.append(f"invalid timing route ignored for {name}: {timing_route}")
+            timing_route = ""
+        entry = _format_weighted_artist_name(name, weight)
+        if layer_route:
+            entry = f"{entry}@{layer_route}"
+        if timing_route:
+            entry = f"{entry}%{timing_route}"
+        entries.append(entry)
+        labels.append(name)
+        weights.append(weight)
+        layer_routes.append(layer_route)
+        timing_routes.append(timing_route)
+
+    chain = "\n".join(entries)
+    lines = [
+        "Anima Artist Chain Builder",
+        "",
+        f"layout: {layout}",
+        f"artists: {len(entries)}",
+        "",
+        "artist_chain:",
+        chain or "  (empty)",
+        "",
+        "block map:",
+        _format_artist_block_map(labels, layer_routes, timing_routes, num_blocks),
+        "",
+        "warnings:",
+    ]
+    if warnings:
+        lines.extend(f"  - {w}" for w in warnings)
+    else:
+        lines.append("  - no obvious builder issue")
+    return chain, "\n".join(lines)
+
+
+def _format_artist_chain_preview(artist_chain, num_blocks=28):
+    parts = _split_artist_chain(artist_chain)
+    clean_timing_parts, timing_routes = _parse_artist_timing_routes(parts)
+    clean_layer_parts, layer_routes = _parse_artist_layer_routes(clean_timing_parts)
+    names, weights, has_explicit = _parse_artist_weights(clean_layer_parts)
+
+    warnings = []
+    for raw, clean, timing in zip(parts, clean_timing_parts, timing_routes):
+        if "%" in str(raw) and not timing:
+            warnings.append(f"invalid timing route kept as artist text: {raw}")
+    for raw, clean, route in zip(clean_timing_parts, clean_layer_parts, layer_routes):
+        if "@" in str(raw) and not route:
+            suffix = str(raw).rsplit("@", 1)[-1].strip()
+            if not any(ch.isdigit() or ch in ",，-" for ch in suffix):
+                continue
+            warnings.append(f"invalid layer route kept as artist text: {raw}")
+    if len(names) > MAX_ARTISTS:
+        warnings.append(f"artist count {len(names)} exceeds MAX_ARTISTS={MAX_ARTISTS}; Pack will truncate")
+    if has_explicit:
+        warnings.append("::weight detected; runtime normalize_weights will be bypassed")
+
+    cleaned_entries = []
+    for label, weight, layer_route, timing_route in zip(names, weights, layer_routes, timing_routes):
+        entry = _format_weighted_artist_name(label, weight)
+        if layer_route:
+            entry = f"{entry}@{layer_route}"
+        if timing_route:
+            entry = f"{entry}%{timing_route}"
+        cleaned_entries.append(entry)
+    cleaned_chain = "\n".join(cleaned_entries)
+
+    lines = [
+        "Anima Artist Chain Preview",
+        "",
+        f"artists: {len(names)}",
+        f"explicit weights: {_format_bool(has_explicit)}",
+        "",
+        "parsed artists:",
+    ]
+    if names:
+        for idx, (label, weight, layer_route, timing_route) in enumerate(
+            zip(names, weights, layer_routes, timing_routes), start=1,
+        ):
+            layer_text = f" @ {layer_route}" if layer_route else ""
+            timing_text = f" % {timing_route}" if timing_route else ""
+            lines.append(f"  {idx}. {label} :: {weight:.3g}{layer_text}{timing_text}")
+    else:
+        lines.append("  (none)")
+    lines.extend([
+        "",
+        "block map:",
+        _format_artist_block_map(names, layer_routes, timing_routes, num_blocks),
+        "",
+        "warnings:",
+    ])
+    if warnings:
+        lines.extend(f"  - {w}" for w in warnings)
+    else:
+        lines.append("  - no obvious syntax issue")
+    return cleaned_chain, "\n".join(lines)
 
 
 def _project_perpendicular(delta, base):
@@ -1710,6 +1885,106 @@ class AnimaArtistPack:
         },)
 
 
+class AnimaArtistChainBuilder:
+    @classmethod
+    def INPUT_TYPES(cls):
+        artist_input = {
+            "multiline": False,
+            "default": "",
+            "tooltip": "画师 tag。留空则跳过这一行。",
+        }
+        layer_input = {
+            "multiline": False,
+            "default": "",
+            "tooltip": "可选层路由，例如 0-8 或 0,2,4。manual 模式使用；其它 layout 下留空则自动填。",
+        }
+        timing_input = {
+            "multiline": False,
+            "default": "",
+            "tooltip": "可选时间路由，例如 0.0-0.45。manual 模式使用；其它 layout 下留空则自动填。",
+        }
+        return {
+            "required": {
+                "layout": (CHAIN_LAYOUT_CHOICES, {
+                    "default": CHAIN_LAYOUT_LAYER_SCHEDULED,
+                    "tooltip": (
+                        "manual: 使用每行自定义 layer/timing\n"
+                        "even_layers: 按画师数均分 DiT blocks\n"
+                        "layer_scheduled: 前/中/后层 + 前/中/后采样时间，一键三段式"
+                    ),
+                }),
+                "artist_1": ("STRING", artist_input),
+                "weight_1": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05}),
+                "artist_2": ("STRING", artist_input),
+                "weight_2": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05}),
+                "artist_3": ("STRING", artist_input),
+                "weight_3": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05}),
+            },
+            "optional": {
+                "layer_route_1": ("STRING", layer_input),
+                "timing_route_1": ("STRING", timing_input),
+                "layer_route_2": ("STRING", layer_input),
+                "timing_route_2": ("STRING", timing_input),
+                "layer_route_3": ("STRING", layer_input),
+                "timing_route_3": ("STRING", timing_input),
+                "num_blocks": ("INT", {
+                    "default": 28, "min": 1, "max": 64, "step": 1,
+                    "tooltip": "预览用 block 数。Anima 默认 28。",
+                }),
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("artist_chain", "preview")
+    FUNCTION = "build"
+    CATEGORY = "Anima/CrossAttn"
+    OUTPUT_NODE = True
+
+    def build(self, layout, artist_1, weight_1, artist_2, weight_2, artist_3, weight_3,
+              layer_route_1="", timing_route_1="", layer_route_2="", timing_route_2="",
+              layer_route_3="", timing_route_3="", num_blocks=28):
+        rows = [
+            (artist_1, weight_1, layer_route_1, timing_route_1),
+            (artist_2, weight_2, layer_route_2, timing_route_2),
+            (artist_3, weight_3, layer_route_3, timing_route_3),
+        ]
+        chain, report = _build_artist_chain_from_rows(layout, rows, int(num_blocks))
+        return {"ui": {"text": [report]}, "result": (chain, report)}
+
+
+class AnimaArtistChainPreview:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "artist_chain": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "tooltip": (
+                        "要检查的 artist_chain。这个节点不需要 CLIP/model，"
+                        "用于在编码前检查 ::weight、@layers、%timing 是否解析正确。"
+                    ),
+                }),
+            },
+            "optional": {
+                "num_blocks": ("INT", {
+                    "default": 28, "min": 1, "max": 64, "step": 1,
+                    "tooltip": "预览用 block 数。Anima 默认 28。",
+                }),
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("cleaned_chain", "report")
+    FUNCTION = "preview"
+    CATEGORY = "Anima/CrossAttn"
+    OUTPUT_NODE = True
+
+    def preview(self, artist_chain, num_blocks=28):
+        cleaned, report = _format_artist_chain_preview(artist_chain, int(num_blocks))
+        return {"ui": {"text": [report]}, "result": (cleaned, report)}
+
+
 class AnimaArtistOptions:
     @classmethod
     def INPUT_TYPES(cls):
@@ -2465,6 +2740,8 @@ class AnimaArtistCrossAttn:
 
 
 NODE_CLASS_MAPPINGS = {
+    "AnimaArtistChainBuilder": AnimaArtistChainBuilder,
+    "AnimaArtistChainPreview": AnimaArtistChainPreview,
     "AnimaArtistPack": AnimaArtistPack,
     "AnimaArtistCrossAttn": AnimaArtistCrossAttn,
     "AnimaArtistOptions": AnimaArtistOptions,
@@ -2473,6 +2750,8 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "AnimaArtistChainBuilder": "Anima Artist Chain Builder",
+    "AnimaArtistChainPreview": "Anima Artist Chain Preview",
     "AnimaArtistPack": "Anima Artist Pack (Split + Encode)",
     "AnimaArtistCrossAttn": "Anima Artist Cross-Attn (v2)",
     "AnimaArtistOptions": "Anima Artist Options (Advanced)",

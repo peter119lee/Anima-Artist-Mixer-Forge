@@ -129,6 +129,45 @@ class ArtistRoutingHelpersTest(unittest.TestCase):
         self.assertIn("L1", hints[0])
         self.assertIn("ExternalWrapper", hints[0])
 
+    def test_chain_builder_creates_layer_scheduled_chain(self):
+        chain, report = nodes._build_artist_chain_from_rows(
+            nodes.CHAIN_LAYOUT_LAYER_SCHEDULED,
+            [
+                ("@wlop", 1.2, "", ""),
+                ("krenz", 0.8, "", ""),
+                ("", 1.0, "", ""),
+            ],
+            num_blocks=28,
+        )
+
+        self.assertEqual(
+            chain,
+            "::@wlop::1.2@0-8%0.0-0.45\n::krenz::0.8@9-18%0.35-0.85",
+        )
+        self.assertIn("L0-L8: @wlop%0.00-0.45", report)
+        self.assertIn("L9-L18: krenz%0.35-0.85", report)
+
+    def test_chain_preview_reports_invalid_timing_before_clip_encoding(self):
+        cleaned, report = nodes._format_artist_chain_preview(
+            "wlop@0,2,4%0.0-0.5, bad%0.5-0.5",
+            num_blocks=28,
+        )
+
+        self.assertEqual(cleaned, "wlop@0,2,4%0.0-0.5\nbad%0.5-0.5")
+        self.assertIn("L0: wlop%0.00-0.50", report)
+        self.assertIn("invalid timing", report)
+
+    def test_chain_builder_ignores_invalid_manual_routes(self):
+        chain, report = nodes._build_artist_chain_from_rows(
+            nodes.CHAIN_LAYOUT_MANUAL,
+            [("wlop", 1.0, "abc", "0.2-0.2")],
+            num_blocks=28,
+        )
+
+        self.assertEqual(chain, "wlop")
+        self.assertIn("invalid layer route ignored", report)
+        self.assertIn("invalid timing route ignored", report)
+
 
 if __name__ == "__main__":
     unittest.main()
