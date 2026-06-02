@@ -54,6 +54,7 @@ Restart ComfyUI. No extra dependencies.
 
 - Top text box of `AnimaArtistPack`: your artist chain (comma or newline separated)
 - Use `AnimaArtistChainBuilder` when you do not want to hand-write `::weight`, `@layers`, and `%timing`
+- Builder's three visible rows are only shortcuts; use its `artist_table` field for larger chains
 - Use `AnimaArtistChainPreview` to validate a chain before paying the CLIP encoding cost
 - Bottom text box: the main prompt (no need to repeat artist names here)
 - Wire `AnimaArtistCrossAttn`'s `base_prompt` output directly to KSampler's positive input

@@ -741,36 +741,71 @@ def _format_weighted_artist_name(name, weight):
     return f"::{name}::{weight:.3g}"
 
 
+def _format_route_float(value):
+    return f"{float(value):.2f}"
+
+
+def _even_layer_routes(count, num_blocks):
+    routes = []
+    for idx in range(count):
+        lo = int(round(idx * num_blocks / count))
+        hi = int(round((idx + 1) * num_blocks / count)) - 1
+        routes.append(f"{lo}-{max(lo, hi)}")
+    return routes
+
+
 def _default_builder_routes(layout, count, num_blocks):
     count = max(0, int(count))
     if count <= 0:
         return [], []
     num_blocks = max(1, int(num_blocks))
     if layout == CHAIN_LAYOUT_EVEN_LAYERS:
-        routes = []
-        for idx in range(count):
-            lo = int(round(idx * num_blocks / count))
-            hi = int(round((idx + 1) * num_blocks / count)) - 1
-            routes.append(f"{lo}-{max(lo, hi)}")
-        return routes, [""] * count
+        return _even_layer_routes(count, num_blocks), [""] * count
     if layout == CHAIN_LAYOUT_LAYER_SCHEDULED:
-        route_templates = ["0-8", "9-18", "19-27"]
-        timing_templates = ["0.0-0.45", "0.35-0.85", "0.65-1.0"]
-        routes = []
-        timings = []
-        for idx in range(count):
-            if idx < len(route_templates):
+        if count <= 3:
+            route_templates = ["0-8", "9-18", "19-27"]
+            timing_templates = ["0.0-0.45", "0.35-0.85", "0.65-1.0"]
+            routes = []
+            timings = []
+            for idx in range(count):
                 parsed = _parse_layer_filter(route_templates[idx], num_blocks)
                 if parsed is None:
                     routes.append("")
                 else:
                     routes.append(f"{parsed[0]}-{parsed[-1]}")
                 timings.append(timing_templates[idx])
-            else:
-                routes.append("")
-                timings.append("")
+            return routes, timings
+        routes = []
+        timings = []
+        for idx in range(count):
+            lo = int(round(idx * num_blocks / count))
+            hi = int(round((idx + 1) * num_blocks / count)) - 1
+            routes.append(f"{lo}-{max(lo, hi)}")
+            start = max(0.0, (idx / count) - 0.08)
+            end = min(1.0, ((idx + 1) / count) + 0.08)
+            timings.append(f"{_format_route_float(start)}-{_format_route_float(end)}")
         return routes, timings
     return [""] * count, [""] * count
+
+
+def _parse_builder_artist_table(artist_table):
+    rows = []
+    for raw_line in str(artist_table or "").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        name = parts[0] if parts else ""
+        weight = 1.0
+        if len(parts) > 1 and parts[1]:
+            try:
+                weight = float(parts[1])
+            except ValueError:
+                weight = 1.0
+        layer_route = parts[2] if len(parts) > 2 else ""
+        timing_route = parts[3] if len(parts) > 3 else ""
+        rows.append((name, weight, layer_route, timing_route))
+    return rows
 
 
 def _build_artist_chain_from_rows(layout, rows, num_blocks=28):
@@ -1913,6 +1948,15 @@ class AnimaArtistChainBuilder:
                         "layer_scheduled: 前/中/后层 + 前/中/后采样时间，一键三段式"
                     ),
                 }),
+                "artist_table": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "tooltip": (
+                        "多画师表。每行: artist | weight | layers | timing。\n"
+                        "例: @wlop | 1.2 | 0-8 | 0.0-0.45\n"
+                        "空 layer/timing 会按 layout 自动填。# 开头行会忽略。"
+                    ),
+                }),
                 "artist_1": ("STRING", artist_input),
                 "weight_1": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05}),
                 "artist_2": ("STRING", artist_input),
@@ -1940,7 +1984,7 @@ class AnimaArtistChainBuilder:
     CATEGORY = "Anima/CrossAttn"
     OUTPUT_NODE = True
 
-    def build(self, layout, artist_1, weight_1, artist_2, weight_2, artist_3, weight_3,
+    def build(self, layout, artist_table, artist_1, weight_1, artist_2, weight_2, artist_3, weight_3,
               layer_route_1="", timing_route_1="", layer_route_2="", timing_route_2="",
               layer_route_3="", timing_route_3="", num_blocks=28):
         rows = [
@@ -1948,6 +1992,7 @@ class AnimaArtistChainBuilder:
             (artist_2, weight_2, layer_route_2, timing_route_2),
             (artist_3, weight_3, layer_route_3, timing_route_3),
         ]
+        rows.extend(_parse_builder_artist_table(artist_table))
         chain, report = _build_artist_chain_from_rows(layout, rows, int(num_blocks))
         return {"ui": {"text": [report]}, "result": (chain, report)}
 

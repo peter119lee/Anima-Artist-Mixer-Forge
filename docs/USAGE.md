@@ -115,7 +115,7 @@ Restart ComfyUI. No extra dependencies.
 ```
 
 Key points:
-- Use `AnimaArtistChainBuilder` for the fastest safe setup: enter up to three artists, pick a layout, then connect its `artist_chain` output into `AnimaArtistPack`
+- Use `AnimaArtistChainBuilder` for the fastest safe setup: enter a few artists in the shortcut rows or many artists in `artist_table`, pick a layout, then connect its `artist_chain` output into `AnimaArtistPack`
 - Use `AnimaArtistChainPreview` when hand-writing chains; it catches syntax mistakes before CLIP encoding
 - Write your artist chain in `AnimaArtistPack`'s top text box (comma or newline separated)
 - Write your main prompt in the bottom text box
@@ -130,7 +130,7 @@ Key points:
 
 ### AnimaArtistChainBuilder (UX helper)
 
-This is the easiest way to build a correct chain without memorizing syntax. It outputs a ready-to-connect `artist_chain` string plus a preview report.
+This is the easiest way to build a correct chain without memorizing syntax. It outputs a ready-to-connect `artist_chain` string plus a preview report. The three visible artist rows are shortcuts, not a hard limit; use `artist_table` for larger chains. `AnimaArtistPack` still applies the real upper limit, `MAX_ARTISTS = 32`.
 
 | Layout | Behavior |
 |---|---|
@@ -145,6 +145,19 @@ For `layer_scheduled`, the default rows are:
 | artist 1 | `0-8` | `0.0-0.45` | composition / global style |
 | artist 2 | `9-18` | `0.35-0.85` | structure / character bias |
 | artist 3 | `19-27` | `0.65-1.0` | detail / brushwork |
+
+For four or more artists, `layer_scheduled` evenly splits blocks across the active rows and assigns overlapping sampling windows across `0.0-1.0`.
+
+`artist_table` format:
+
+```
+artist | weight | layers | timing
+@wlop | 1.2 | 0-8 | 0.0-0.45
+krenz | 0.8 | 9-18 | 0.35-0.85
+hiten | 1.0 | 19-27 | 0.65-1.0
+```
+
+Only the artist column is required. Blank weight defaults to `1.0`; blank layer/timing fields are filled by the selected layout.
 
 ### AnimaArtistChainPreview (syntax check)
 

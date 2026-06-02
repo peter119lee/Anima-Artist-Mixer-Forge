@@ -168,6 +168,43 @@ class ArtistRoutingHelpersTest(unittest.TestCase):
         self.assertIn("invalid layer route ignored", report)
         self.assertIn("invalid timing route ignored", report)
 
+    def test_chain_builder_table_supports_more_than_three_artists(self):
+        rows = nodes._parse_builder_artist_table(
+            "@a | 1.2\n"
+            "b | 0.8\n"
+            "c\n"
+            "d"
+        )
+        chain, report = nodes._build_artist_chain_from_rows(
+            nodes.CHAIN_LAYOUT_LAYER_SCHEDULED,
+            rows,
+            num_blocks=28,
+        )
+        lines = chain.splitlines()
+
+        self.assertEqual(len(lines), 4)
+        self.assertEqual(lines[0], "::@a::1.2@0-6%0.00-0.33")
+        self.assertEqual(lines[-1], "d@21-27%0.67-1.00")
+        self.assertIn("artists: 4", report)
+
+    def test_chain_builder_node_accepts_table_artists(self):
+        result = nodes.AnimaArtistChainBuilder().build(
+            nodes.CHAIN_LAYOUT_LAYER_SCHEDULED,
+            "a\nb\nc\nd\ne",
+            "",
+            1.0,
+            "",
+            1.0,
+            "",
+            1.0,
+            num_blocks=28,
+        )
+        chain, report = result["result"]
+
+        self.assertEqual(len(chain.splitlines()), 5)
+        self.assertIn("artists: 5", report)
+        self.assertIn("e@22-27%0.72-1.00", chain)
+
 
 if __name__ == "__main__":
     unittest.main()
