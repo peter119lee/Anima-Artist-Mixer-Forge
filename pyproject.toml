@@ -1,0 +1,16 @@
+[project]
+name = "anima-artist-mixer"
+description = "A ComfyUI custom node that enables multi-artist mixing for the Anima model by hooking into its cross-attention layers."
+version = "24.0.0"
+license = { file = "LICENSE" }
+dependencies = []
+readme = "README.md"
+
+[project.urls]
+Repository = "https://github.com/An1X3R/Anima-Artist-Mixer"
+"Bug Tracker" = "https://github.com/An1X3R/Anima-Artist-Mixer/issues"
+
+[tool.comfy]
+PublisherId = "an1x3r"
+DisplayName = "Anima Artist Mixer"
+Icon = ""
