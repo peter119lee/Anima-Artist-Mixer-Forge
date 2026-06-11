@@ -1,0 +1,26 @@
+[project]
+name = "anima-artist-mixer"
+description = "Multi-artist style mixing for the Anima model via cross-attention injection (ComfyUI custom node pack)"
+version = "26.0.0"
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/An1X3R/Anima-Artist-Mixer"
+BugTracker = "https://github.com/An1X3R/Anima-Artist-Mixer/issues"
+
+[tool.comfy]
+# Fill in your registry publisher id before `comfy node publish`.
+PublisherId = ""
+DisplayName = "Anima Artist Mixer"
+Icon = ""
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
