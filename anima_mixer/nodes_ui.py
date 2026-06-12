@@ -320,6 +320,17 @@ class AnimaArtistOptions:
                         "for a small per-step transfer cost."
                     ),
                 }),
+                "match_base_norm": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": (
+                        "Rescale the mixed artist attention output to the base "
+                        "output's RMS energy (per batch row, clamped to 0.5-2.0x).\n"
+                        "Keeps the style direction but stops activation-energy "
+                        "mismatch from compounding across layers — the main "
+                        "source of seed-to-seed style-strength swings (style "
+                        "drift). Disable to reproduce pre-v26 behavior exactly."
+                    ),
+                }),
             },
         }
 
@@ -334,7 +345,7 @@ class AnimaArtistOptions:
               anchor_seeds_count=1, anchor_user_blend=0.0,
               anchor_deep_layer_threshold=ANCHOR_LAYER_THRESHOLD_DISABLED,
               layer_filter="", compatibility_mode=False,
-              max_batch_artists=0, low_vram_cache=False):
+              max_batch_artists=0, low_vram_cache=False, match_base_norm=True):
         return ({
             "start_block": int(start_block),
             "end_block": int(end_block),
@@ -353,6 +364,7 @@ class AnimaArtistOptions:
             "compatibility_mode": bool(compatibility_mode),
             "max_batch_artists": int(max_batch_artists),
             "low_vram_cache": bool(low_vram_cache),
+            "match_base_norm": bool(match_base_norm),
         },)
 
 
@@ -653,6 +665,7 @@ class AnimaArtistInspector:
             f"anchor_q: {format_bool(adv.get('artist_anchor_q', False))}",
             f"max_batch_artists: {int(adv.get('max_batch_artists', 0) or 0) or 'unlimited'}",
             f"low_vram_cache: {format_bool(adv.get('low_vram_cache', False))}",
+            f"match_base_norm: {format_bool(adv.get('match_base_norm', True))}",
             "",
             "artists:",
         ]

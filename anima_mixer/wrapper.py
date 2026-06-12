@@ -214,6 +214,29 @@ class CrossAttnWrapper(nn.Module):
                 out[i] = base_out[i] * (1.0 - strength) + artist_total[i] * strength
         return out
 
+    def _match_base_norm(self, artist_total, base_out, mask):
+        """Rescale the mixed artist output to the base output's RMS energy.
+
+        The weighted artist mixture can carry noticeably different
+        activation energy than the base output downstream blocks were
+        trained on; the deviation compounds across layers and surfaces as
+        seed-dependent style-strength swings (style drift). Per-row RMS
+        matching keeps the artist direction (the style) while restoring
+        on-distribution magnitude. The scale is clamped to [0.5, 2.0] so
+        pathological mismatches degrade gracefully instead of
+        overcorrecting. Rows outside the injection mask keep scale 1.
+        """
+        dims = tuple(range(1, artist_total.dim()))
+        base_rms = base_out.detach().to(torch.float32).pow(2).mean(
+            dim=dims, keepdim=True).sqrt()
+        artist_rms = artist_total.detach().to(torch.float32).pow(2).mean(
+            dim=dims, keepdim=True).sqrt()
+        scale = (base_rms / artist_rms.clamp(min=1e-6)).clamp(0.5, 2.0)
+        for i, hit in enumerate(mask):
+            if not hit:
+                scale[i] = 1.0
+        return artist_total * scale.to(artist_total.dtype)
+
     # ---------------------------------------------------------------- forward
 
     def forward(self, x, context=None, rope_emb=None, transformer_options=None):
@@ -388,13 +411,23 @@ class CrossAttnWrapper(nn.Module):
 
         artist_total = self._apply_ema(artist_total, fusion_mode)
 
+        match_norm = (
+            self._st.get("match_base_norm", True)
+            and fusion_mode in (FUSION_INTERPOLATE, FUSION_BASE_PRESERVE)
+        )
         # base_preserve always needs base_out for the projection. interpolate
         # can skip it only at exactly strength == 1.0 (extrapolation beyond
-        # 1.0 starts from base again).
-        if fusion_mode == FUSION_INTERPOLATE and strength == 1.0 and all(mask):
-            return artist_total
-        if base_out is None:
+        # 1.0 starts from base again) — unless norm matching needs the base
+        # reference anyway.
+        skip_fusion = (
+            fusion_mode == FUSION_INTERPOLATE and strength == 1.0 and all(mask)
+        )
+        if base_out is None and (match_norm or not skip_fusion):
             base_out = self.original(x, context, rope_emb=rope_emb, transformer_options=t_opts)
+        if match_norm:
+            artist_total = self._match_base_norm(artist_total, base_out, mask)
+        if skip_fusion:
+            return artist_total
         return self._apply_fusion(base_out, artist_total, mask, fusion_mode, strength)
 
     # ---------------------------------------------------------------- anchor
@@ -624,6 +657,8 @@ class CrossAttnWrapper(nn.Module):
             )
             artist_out = outs[0]
             artist_out = self._apply_ema(artist_out, fusion_mode)
+            if self._st.get("match_base_norm", True):
+                artist_out = self._match_base_norm(artist_out, base_out, mask)
 
             if fusion_mode == FUSION_INTERPOLATE and strength == 1.0 and all(mask):
                 return artist_out

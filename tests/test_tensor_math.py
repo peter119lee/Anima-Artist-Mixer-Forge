@@ -178,8 +178,12 @@ class WrapperHelpersTest(unittest.TestCase):
     def test_output_avg_fade_blends_toward_base(self):
         # Single artist at fade 0.5 with normalize on: the output must be the
         # midpoint between the artist attention output and the base output,
-        # not a renormalized full-strength artist.
-        state = {"normalize_weights": True, "apply_to_uncond": False}
+        # not a renormalized full-strength artist. match_base_norm is off so
+        # the zero-valued stub base output does not rescale the assertion.
+        state = {
+            "normalize_weights": True, "apply_to_uncond": False,
+            "match_base_norm": False,
+        }
         w = CrossAttnWrapper(_KVMeanAttn(), state, 0)
         x = torch.zeros(1, 2, 4)
         base_ctx = torch.zeros(1, 3, 4)      # base attention output -> 0
@@ -220,6 +224,47 @@ class WrapperHelpersTest(unittest.TestCase):
         out = w._apply_fusion(base, artist, [True], "base_preserve", 1.0)
         self.assertTrue(torch.allclose(out[..., 0], base[..., 0]))
         self.assertTrue(torch.allclose(out[..., 1], torch.full((1, 2), 2.0)))
+
+
+class MatchBaseNormTest(unittest.TestCase):
+    def _wrapper(self):
+        return CrossAttnWrapper(torch.nn.Identity(), {}, 0)
+
+    def test_rescales_artist_to_base_rms(self):
+        w = self._wrapper()
+        base = torch.full((1, 4, 8), 2.0)     # RMS 2
+        artist = torch.full((1, 4, 8), 1.0)   # RMS 1
+        out = w._match_base_norm(artist, base, [True])
+        self.assertTrue(torch.allclose(out, torch.full_like(out, 2.0)))
+
+    def test_scale_is_clamped(self):
+        w = self._wrapper()
+        base = torch.full((1, 4, 8), 10.0)    # would need 10x
+        artist = torch.full((1, 4, 8), 1.0)
+        out = w._match_base_norm(artist, base, [True])
+        self.assertTrue(torch.allclose(out, torch.full_like(out, 2.0)))  # 2x cap
+        base = torch.full((1, 4, 8), 0.1)     # would need 0.1x
+        out = w._match_base_norm(artist, base, [True])
+        self.assertTrue(torch.allclose(out, torch.full_like(out, 0.5)))  # 0.5x floor
+
+    def test_unmasked_rows_untouched(self):
+        w = self._wrapper()
+        base = torch.full((2, 4, 8), 2.0)
+        artist = torch.full((2, 4, 8), 1.0)
+        out = w._match_base_norm(artist, base, [True, False])
+        self.assertTrue(torch.allclose(out[0], torch.full((4, 8), 2.0)))
+        self.assertTrue(torch.allclose(out[1], torch.full((4, 8), 1.0)))
+
+    def test_preserves_direction(self):
+        torch.manual_seed(7)
+        w = self._wrapper()
+        base = torch.randn(1, 4, 8)
+        artist = torch.randn(1, 4, 8)
+        out = w._match_base_norm(artist, base, [True])
+        cos = torch.nn.functional.cosine_similarity(
+            out.flatten(), artist.flatten(), dim=0,
+        )
+        self.assertGreater(cos.item(), 0.9999)
 
 
 class AnchorFingerprintTest(unittest.TestCase):

@@ -44,6 +44,7 @@ def base_advanced_options():
         "compatibility_mode": False,
         "max_batch_artists": 0,
         "low_vram_cache": False,
+        "match_base_norm": True,
     }
 
 
