@@ -1,5 +1,32 @@
 # Changelog
 
+## v26.1.0 (2026-06-21)
+
+### v26 Syntax Enhancements (from upstream)
+- **Prefix weight syntax** (recommended): `1.5::wlop` instead of `wlop::1.5`
+  - More intuitive for users copying from NovelAI-style prompts
+  - Postfix syntax (`wlop::1.5`, `::wlop::1.5`) remains supported for backward compatibility
+  - Parsing order: tries prefix first, falls back to postfix
+  - Works with parentheses: `0.8::(wlop:1.1)` for layered weighting
+
+- **base_prompt weight syntax**: `1.5::masterpiece::, 1girl` expands to `(masterpiece:1.5), 1girl`
+  - Allows weight syntax in base prompts for quality tags
+  - Uses prefix-only syntax with trailing `::` boundary marker
+  - Can span across commas: `1.3::detailed background, intricate::, 1girl`
+  - Weights clamped to [0.0, 4.0] like artist weights
+
+- **stabilizer_end_percent parameter** (advanced): Controls when stabilizers auto-disable
+  - Default: `1.0` (full sampling, v24 behavior)
+  - For FLS users: `0.5` recommended (stabilizer active first 50%, dynamic after)
+  - Affects `static_capture`, `anchor_q`, and EMA; does not affect `lowrank_avg` or `sigma_range`
+  - Enables compatibility with step-delta-based samplers (FLS, etc.)
+
+### Bug Fixes
+- **Multiple sampler workflows**: Fixed `AttributeError: 'Attention' object has no attribute 'original'`
+  - Added defensive check for already-patched cross_attn.forward
+  - Handles workflows where same model is used by multiple samplers
+  - Tested and verified with user-reported workflow
+
 ## v26.0.0 (2026-06-11)
 
 ### 2026-06-19 PR feedback fixes

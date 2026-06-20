@@ -32,6 +32,7 @@ from .constants import (
 )
 from .options import build_preset_payload, merge_runtime_options
 from .parsing import (
+    expand_prompt_weights,
     parse_artist_layer_routes,
     parse_artist_timing_routes,
     parse_artist_weights,
@@ -134,7 +135,9 @@ class AnimaArtistPack:
         parts, timing_routes = parse_artist_timing_routes(parts)
         parts, layer_routes = parse_artist_layer_routes(parts)
         names, parsed_weights, has_explicit = parse_artist_weights(parts)
-        base = (base_prompt or "").strip()
+
+        # v26: Expand weight::target:: syntax in base_prompt
+        base = expand_prompt_weights((base_prompt or "").strip())
 
         try:
             base_tokens = clip.tokenize(base)

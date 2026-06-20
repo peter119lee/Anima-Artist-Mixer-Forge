@@ -1,0 +1,43 @@
+Anima-Artist-Mixer Test Report
+============================================================
+
+Test Seed: 12345
+Total Tests: 9
+Passed: 0
+Failed: 9
+
+Test Results:
+------------------------------------------------------------
+✗ FAIL | 1a_no_mixer_single
+       Single artist in prompt (baseline)
+
+✗ FAIL | 1b_mixer_single_balanced
+       Single artist via mixer (balanced preset)
+
+✗ FAIL | 2a_no_mixer_multi
+       Multi-artist in prompt (shows interference)
+
+✗ FAIL | 2b_mixer_multi_balanced
+       Multi-artist via mixer (balanced)
+
+✗ FAIL | 3b_preset_strong_style
+       Preset: strong_style (strength 1.8)
+
+✗ FAIL | 3c_preset_stable_seed
+       Preset: stable_seed (cross-seed stability)
+
+✗ FAIL | 3d_preset_drift_auto
+       Preset: drift_auto (automatic routing)
+
+✗ FAIL | 3e_preset_face_lock
+       Preset: face_lock (preserve facial details)
+
+✗ FAIL | 3f_preset_scene_lock
+       Preset: scene_lock (protect background)
+
+
+Next Steps:
+------------------------------------------------------------
+1. Check generated images in ComfyUI output folder
+2. Compare images visually
+3. Document findings

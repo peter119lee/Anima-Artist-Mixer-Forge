@@ -61,6 +61,11 @@ ANCHOR_SEEDS_POOL = [42, 100, 200, 300]   # seeds used when averaging multiple a
 ANCHOR_SEEDS_MAX = 4                      # UI upper bound = len(ANCHOR_SEEDS_POOL)
 ANCHOR_LAYER_THRESHOLD_DISABLED = -1      # -1 means every layer uses the anchor Q
 
+# v26: Stabilizer end percent - allows stabilizers to auto-disable after certain sampling progress
+# for compatibility with FLS (Foveated Latent Sampler) and similar step-delta-based samplers
+STABILIZER_END_PERCENT_DEFAULT = 1.0      # 1.0 = full sampling (v24 behavior, backward compatible)
+STABILIZER_END_PERCENT_FLS_RECOMMENDED = 0.5  # 0.5 = stabilizer active first 50%, dynamic after
+
 PRESET_BALANCED = "balanced"
 PRESET_STRONG_STYLE = "strong_style"
 PRESET_STABLE_SEED = "stable_seed"

@@ -90,17 +90,33 @@ def split_artist_chain(chain):
 
 
 def parse_artist_weights(parts):
-    """Extract ``::name::weight`` linear weights from pre-split chain parts.
+    """v26: Extract artist weights with both prefix (recommended) and postfix (compatible) syntax.
+
+    Prefix syntax (v26 recommended, NovelAI-style):
+      'weight::name'        e.g. '1.5::wlop'
+      'weight::(name:w)'    e.g. '0.8::(wlop:1.1)'  # with parentheses
+
+    Postfix syntax (v24-v25 compatible):
+      'name::weight'        e.g. 'wlop::1.5'
+      '::name::weight'      e.g. '::wlop::1.5'
+
+    Examples:
+      'wlop'              → ('wlop', 1.0, False)
+      '1.5::wlop'         → ('wlop', 1.5, True)              # v26 prefix (recommended)
+      'wlop::1.5'         → ('wlop', 1.5, True)              # postfix (compatible)
+      '::wlop::1.5'       → ('wlop', 1.5, True)              # postfix (compatible)
+      '(wlop:1.1)'        → ('(wlop:1.1)', 1.0, False)       # CLIP parentheses only
+      '0.8::(wlop:1.1)'   → ('(wlop:1.1)', 0.8, True)        # prefix + parentheses
+      '(wlop:1.1)::0.8'   → ('(wlop:1.1)', 0.8, True)        # postfix + parentheses
+      '::wlop'            → ('wlop', 1.0, False)             # decorative prefix
+
+    Parsing order: Try prefix first (::before is valid number), fallback to postfix (::after is valid number).
+    Weights are clamped to [WEIGHT_MIN, WEIGHT_MAX]; negative weights subtract the artist's style direction.
 
     Returns ``(names, weights, has_explicit)``:
-      names: list[str] for CLIP encoding (``::weight`` suffix stripped,
-             parentheses kept verbatim)
+      names: list[str] for CLIP encoding (weight stripped, parentheses kept verbatim)
       weights: list[float] linear injection weight per artist (default 1.0)
-      has_explicit: True when at least one artist specified ``::weight``
-
-    Invalid (non-numeric) weights fall back to 1.0 without raising.
-    Weights are clamped to [WEIGHT_MIN, WEIGHT_MAX]; negative weights
-    subtract the artist's style direction instead of adding it.
+      has_explicit: True when at least one artist specified explicit weight
     """
     names = []
     weights = []
@@ -111,21 +127,40 @@ def parse_artist_weights(parts):
             continue
         weight = 1.0
         explicit = False
+
         if "::" in s:
-            head = s
-            if head.startswith("::"):
-                head = head[2:]
-            if "::" in head:
-                name_part, _, w_part = head.rpartition("::")
-                w_part = w_part.strip()
+            # ── Try prefix syntax first: 'weight::name' ──
+            head, _, tail = s.partition("::")
+            head_stripped = head.strip()
+            tail_stripped = tail.strip()
+            if head_stripped and tail_stripped:
                 try:
-                    w_val = float(w_part)
+                    w_val = float(head_stripped)
                     weight = clamp_float(w_val, WEIGHT_MIN, WEIGHT_MAX)
                     explicit = True
-                    s = name_part.strip()
+                    s = tail_stripped
                 except ValueError:
-                    # Unparseable weight: keep the raw text so the user notices.
                     pass
+
+            # ── If prefix didn't match, try postfix: 'name::weight' or '::name::weight' ──
+            if not explicit:
+                tmp = s
+                if tmp.startswith("::"):
+                    tmp = tmp[2:]
+                if "::" in tmp:
+                    name_part, _, w_part = tmp.rpartition("::")
+                    try:
+                        w_val = float(w_part.strip())
+                        weight = clamp_float(w_val, WEIGHT_MIN, WEIGHT_MAX)
+                        explicit = True
+                        s = name_part.strip()
+                    except ValueError:
+                        # Neither prefix nor postfix is valid number → keep raw text
+                        pass
+                elif s.startswith("::"):
+                    # Decorative prefix '::wlop' → strip prefix, weight defaults to 1.0
+                    s = tmp.strip()
+
         if not s:
             continue
         names.append(s)
@@ -330,3 +365,88 @@ def resolve_target_blocks_from_options(adv, num_blocks, strict=False):
             )
         return []
     return list(range(sb_real, eb_real + 1))
+
+
+def expand_prompt_weights(text):
+    """v26: Expand 'weight::target::' in base_prompt to ComfyUI standard bracket syntax '(target:weight)'.
+
+    Syntax: Trailing :: explicitly marks target boundary (can span across commas).
+      '1.5::masterpiece::, 1girl'                  → '(masterpiece:1.5), 1girl'
+      '1.3::detailed background, intricate::, 1girl' → '(detailed background, intricate:1.3), 1girl'
+      'masterpiece, 1.5::high quality::, ok'        → 'masterpiece, (high quality:1.5), ok'
+
+    Non-matching cases (kept as-is for user visibility):
+      '1.5::masterpiece'      (missing trailing ::)
+      'abc::masterpiece::'    (prefix not a number)
+
+    Only prefix syntax (weight::target::) is supported for base_prompt; postfix is not supported
+    to avoid confusion with :: decoration text in sentences.
+    Weight clamped to [0.0, 4.0] (same as strength range).
+    Does not modify parenthesis syntax (name:1.5) — ComfyUI native syntax is passed through unchanged.
+    """
+    if not text or "::" not in text:
+        return text
+
+    result = []
+    i = 0
+    n = len(text)
+    while i < n:
+        sep = text.find("::", i)
+        if sep < 0:
+            result.append(text[i:])
+            break
+
+        # Look backward: find weight from sep leftward, boundary is comma/newline/text start
+        boundary_left = i
+        for j in range(sep - 1, i - 1, -1):
+            if text[j] in ",\n\r":
+                boundary_left = j + 1
+                break
+
+        weight_str = text[boundary_left:sep].strip()
+        weight_val = None
+        try:
+            w = float(weight_str)
+            weight_val = max(0.0, min(4.0, w))
+        except ValueError:
+            pass
+
+        if weight_val is None:
+            # Not a valid weight → skip this ::, keep original text
+            result.append(text[i:sep + 2])
+            i = sep + 2
+            continue
+
+        # Look forward: find trailing '::' after sep+2 (not allowed to cross newline)
+        target_start = sep + 2
+        while target_start < n and text[target_start] == " ":
+            target_start += 1
+
+        end_marker = -1
+        k = target_start
+        while k < n - 1:
+            if text[k] == "\n" or text[k] == "\r":
+                break
+            if text[k] == ":" and text[k + 1] == ":":
+                end_marker = k
+                break
+            k += 1
+
+        if end_marker < 0:
+            result.append(text[i:sep + 2])
+            i = sep + 2
+            continue
+
+        target = text[target_start:end_marker].strip()
+        if not target:
+            result.append(text[i:sep + 2])
+            i = sep + 2
+            continue
+
+        # Output: everything before boundary_left + expanded bracket syntax
+        result.append(text[i:boundary_left])
+        result.append(f"({target}:{weight_val:g})")
+        i = end_marker + 2
+
+    return "".join(result)
+
