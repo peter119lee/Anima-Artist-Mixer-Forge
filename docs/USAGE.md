@@ -6,7 +6,7 @@ This is a ComfyUI custom node that provides **multi-artist mixing** for the Anim
 
 The companion `AnimaArtistPack` node provides a one-shot experience: write your artist list in one text box (comma or newline separated) and your main prompt in another. The node automatically splits, encodes, and packages everything for downstream use.
 
-This README documents the **v26 architecture**. The default `balanced` preset stays close to the original artist mixer, while `prompt_passthrough` provides no-mixer/direct-prompt parity and `drift_auto` provides an opt-in low-drift route. Older versions are still functionally a subset.
+This README documents the **v26 architecture**. The default `balanced` preset stays close to the original artist mixer, while `prompt_passthrough` uses the no-mixer/direct-prompt path and `drift_auto` provides an opt-in low-drift route. Older versions are still functionally a subset.
 
 v25.1 also adds per-artist layer routing, matching the original repository's first public feature request: different artists can now be injected into different DiT block ranges from the same artist chain.
 
@@ -172,7 +172,7 @@ Only the artist column is required. Bad weights are not silently swallowed; the 
 
 | Recipe | Best use |
 |---|---|
-| `prompt_passthrough` | Direct prompt/no-mixer parity while keeping positive artist weight syntax |
+| `prompt_passthrough` | Direct prompt/no-mixer route while keeping positive artist weight syntax |
 | `balanced` | Default first run |
 | `strong_style` | Stronger visual style |
 | `stable_seed` | Same prompt across many seeds |
@@ -292,7 +292,7 @@ Outputs:
 
 ### AnimaArtistPreset (one-click helper)
 
-This is the one-click preset helper. Start with `balanced` for predictable artist mixing; choose `drift_auto` only when you explicitly want automatic low-drift routing. Use `prompt_passthrough` when you want the same result as putting the artist tags directly in the positive prompt, with no attention patch.
+This is the one-click preset helper. Start with `balanced` for predictable artist mixing; choose `drift_auto` only when you explicitly want automatic low-drift routing. Use `prompt_passthrough` when you want the no-mixer/direct-prompt path, with positive artist weights converted into normal prompt weighting and no attention patch.
 
 | Preset | What it does |
 |---|---|
@@ -372,8 +372,8 @@ Not connecting this node = default behavior. Prefer `AnimaArtistSimpleOptions` f
 | `anchor_user_blend` | Blend ratio between anchor Q and user Q. 0 = pure anchor, 1 = pure user |
 | `anchor_deep_layer_threshold` | Use anchor for shallow layers `[0, N)`, user Q for deep layers `[N, end]`. -1 disables |
 | `stabilizer_end_percent` | End point for cache-based stabilizers. `1.0` = whole sampling pass; `0.4-0.6` lets EMA/static/anchor yield during later dynamic steps |
-| `anchor_base_norm_ref` (v26) | Optional A/B path for `anchor_q + match_base_norm`; uses the fixed anchor's base output as the norm reference instead of the current seed's base output. Not the measured default |
-| `anchor_refresh_each_step` (v26) | Rebuild the fixed-seed anchor at every sampling step instead of only the first step. Slow A/B option; live checks did not beat the cached anchor path |
+| `anchor_base_norm_ref` (v26) | Optional A/B path for `anchor_q + match_base_norm`; uses the fixed anchor's base output as the norm reference instead of the current seed's base output. Off by default |
+| `anchor_refresh_each_step` (v26) | Rebuild the fixed-seed anchor at every sampling step instead of only the first step. Slow A/B option, not a recommended default |
 | `compatibility_mode` | Forces `concat + concat_with_base`, disables EMA/static/anchor stabilizers, and reduces conflict risk with regional/attention-patching nodes |
 | `max_batch_artists` (v26) | Caps how many artists share one batched cross-attention forward. `0` = no cap. Set `2-8` to bound peak VRAM with many artists at high resolution instead of falling back to slow sequential mode |
 | `low_vram_cache` (v26) | Stores static-capture and anchor caches in system RAM instead of VRAM. Saves hundreds of MB at high resolution for a small per-step transfer cost |
@@ -566,8 +566,8 @@ First-time cost: ~1 extra step worth of forward time for the anchor pass. After 
 - `anchor_seeds_count` (1~4, default 1): runs N anchor passes with different fixed seeds and averages their hidden states. Mitigates the small chance that a single fixed seed produces a systematically biased anchor. Cost scales linearly with N.
 - `anchor_user_blend` (0~1, default 0): blends anchor Q with user Q. 0 = pure anchor (max stability), 1 = pure user (equivalent to disabling anchor). Useful if pure anchor produces brushwork that looks slightly disconnected from the actual content.
 - `anchor_deep_layer_threshold` (-1~64, default -1 = disabled): when set to N, layers `[0, N)` use anchor Q (style stability) while layers `[N, end]` use user Q (content fidelity). Based on the principle that early DiT blocks set style and late blocks add detail.
-- `anchor_base_norm_ref` (default off): if norm locking is enabled, match against the fixed anchor's base output instead of the current seed's base output. Useful for A/B, but live checks still favored the no-norm anchor path.
-- `anchor_refresh_each_step` (default off): rebuilds the anchor for each sampling timestep. This is slower and did not beat the cached first-step anchor path in live checks, so keep it off unless you are testing.
+- `anchor_base_norm_ref` (default off): if norm locking is enabled, match against the fixed anchor's base output instead of the current seed's base output. Useful for A/B, not a recommended default.
+- `anchor_refresh_each_step` (default off): rebuilds the anchor for each sampling timestep. This is slower than the cached first-step anchor path, so keep it off unless you are testing.
 
 Mutually exclusive with `artist_static_capture` (anchor takes priority, with a warn log).
 
@@ -576,7 +576,7 @@ Mutually exclusive with `artist_static_capture` (anchor takes priority, with a w
 The current `stable_seed` preset uses `output_avg + mixed_delta_cap + mixed_delta_cap_ratio=0.75 + match_base_norm=False + strength=1.0 + layer_filter=9-20` when `layer_mode=auto`.
 This keeps the real style-mixer path active while capping extreme mixed deltas. It avoids the static-capture freeze that can make multi-artist results look washed out or collapse artist differences.
 
-`static_capture_mode` is an advanced A/B control, not a default tuning knob. `output` is the measured default. `delta` preserves current base motion more directly, `blend` interpolates between the frozen output and delta path, and `blend_perp` only reintroduces base motion that is perpendicular to the frozen style delta. In live checks, `blend_perp` helped on street prompts but did not hold the same advantage on portrait and close-up prompts, so it stays experimental.
+`static_capture_mode` is an advanced A/B control, not a default tuning knob. `output` is the conservative default. `delta` preserves current base motion more directly, `blend` interpolates between the frozen output and delta path, and `blend_perp` only reintroduces base motion that is perpendicular to the frozen style delta. These modes are experimental and should be checked against the actual prompt and artist set.
 
 ### Scene-tuned low-drift presets
 
@@ -599,7 +599,7 @@ In v26, use `AnimaArtistStarter` for new workflows, or `AnimaArtistPreset` when 
 |---|---|
 | normal use | `balanced` |
 | stronger visual style | `strong_style` |
-| same prompt across many seeds | `stable_seed` |
+| content-safer cross-seed work | `stable_seed` |
 | lower drift without hand-picking the scene type | `drift_auto` |
 | portrait / broad subject with lower drift | `drift_soft` |
 | 4+ artist plain portrait / street with lower drift while preserving style control | `drift_auto` (`drift_soft` route) |
@@ -669,26 +669,27 @@ sum_i (w_i * softmax(Q @ K_i^T / √d) @ V_i)
 
 Each softmax must be computed independently over its own K, V. Merging into a single large attention would degrade the semantics to `concat` mode.
 
-### Approximate timing (30 steps, varies by GPU)
+### Timing expectations
 
-| Configuration | Relative time |
+Single-run wall time depends on GPU, resolution, sampler, model cache state, VAE decode, and queue load. Treat one-off timings as rough signals, not benchmarks.
+
+| Path | What to expect |
 |---|---|
-| 1 artist | 1.0x (baseline) |
-| 4 artists | ~1.4x |
-| 8 artists | ~1.7x |
-| 5 artists + `artist_static_capture` (K=6) | ~1.1x |
-| 5 artists + `artist_anchor_q` (cached, 2nd seed onward) | ~1.05x |
+| no mixer / `prompt_passthrough` | close to the ordinary Anima prompt path |
+| `balanced`, `drift_soft`, `scene_lock`, `face_lock`, `stable_seed` | slower as active artist count increases |
+| `fast_preview` / `compatibility_safe` | usually faster concat path, but less precise as an artist mixer |
+| layer routes / timing routes | reduce cost only for the layers or sampling steps where artists are inactive |
+| `artist_static_capture` / `artist_anchor_q` | expert A/B controls; may help some repeated-seed workflows but can add overhead or constrain style |
 
-**More artists means more time** — but `artist_static_capture` and `artist_anchor_q` largely amortize this away after the warmup steps.
+### Recommended speed controls
 
-### Strongly recommended: use layer range and step range to reduce cost
+After connecting `AnimaArtistSimpleOptions` or `AnimaArtistOptions`, reduce the amount of active mixer work first:
 
-After connecting `AnimaArtistOptions`, you can **dramatically cut generation time** with usually minimal quality loss:
+- **Layer range** (`start_block / end_block` or `layer_filter`): inject only on selected DiT blocks.
+- **Sampling-step range** (`start_percent / end_percent`): inject only during part of sampling.
+- **Per-artist routes** (`artist@layers%timing`): keep each artist active only where it is useful.
 
-- **Layer range** (`start_block / end_block` or `layer_filter`): inject only on specific DiT blocks. `0..13` (front half) cuts time roughly in half. Artist style is mostly determined by early blocks, so the loss is usually acceptable
-- **Sampling-step range** (`start_percent / end_percent`): inject only during a portion of sampling. `0.0..0.5` (first half) similarly cuts time, since artist style is mostly absorbed during early sampling
-
-Both can be **combined**: "front-half layers + front-half sampling" can bring 8-artist scenarios back to near-single-artist timing. This is the most effective optimization for multi-artist setups, and stacks with `artist_static_capture` / `artist_anchor_q`.
+These controls reduce work only when they actually make artists inactive for some layers or steps. Quality impact is prompt- and artist-dependent, so compare images before treating a faster setting as equivalent.
 
 ## How to write the artist chain
 

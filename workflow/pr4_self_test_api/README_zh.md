@@ -85,7 +85,7 @@ Get-ChildItem "workflow\pr4_self_test_api\*.json" | ForEach-Object {
 
 这项主要验证“同模型多 sampler 不再因为 `.original` patch/restore 失败”。
 
-### 02_prompt_passthrough_parity.json
+### 02_prompt_passthrough_direct_prompt.json
 
 验证 `prompt_passthrough` 的用途。
 
@@ -102,8 +102,8 @@ Get-ChildItem "workflow\pr4_self_test_api\*.json" | ForEach-Object {
   - `anima_selftest_02_direct_prompt`
   - `anima_selftest_02_prompt_passthrough`
 
-这项验证“想要 no-mixer 结果，但保留 `1.2::tag::` 这种方便权重写法”应该使用 `prompt_passthrough`，不是 `balanced` 或 `drift_auto`。
-它也验证 preset-only 节点能返回未 patch 的 model，所以速度应该接近直接 prompt；如果单次时间差很小，不要把它当成严格 benchmark。
+这项验证“想走 no-mixer / 直接 prompt 路线，但保留 `1.2::tag::` 这种方便权重写法”应该使用 `prompt_passthrough`，不是 `balanced` 或 `drift_auto`。
+它也验证 preset-only 节点能返回未 patch 的 model，所以速度应该接近直接 prompt；单次出图会受缓存、队列、VAE decode 等影响，不要把它当成严格 benchmark。
 
 ### 03_multi_artist_modes.json
 
@@ -126,7 +126,7 @@ artist chain:
 - 三张图都能跑出来
 - 三张图不应该完全一样
 - `balanced` 是原始 mixer 风格路线
-- `drift_auto` 是降低 style drift 的工程路线，不是 no-mixer parity
+- `drift_auto` 是降低 style drift 的工程路线，不是 no-mixer / 直接 prompt 路线
 - `balanced` 和 `drift_auto` 都不会在 preset apply 节点上显示 `combine_mode` / `fusion_mode` / `strength`
 
 输出文件名前缀：
@@ -183,6 +183,6 @@ artist chain:
 
 - 是否能真实跑完
 - 是否修复同模型多 sampler 问题
-- `prompt_passthrough` 是否符合 no-mixer parity 的用途
+- `prompt_passthrough` 是否符合 no-mixer / 直接 prompt 路线的用途
 - 多 artist 下 `prompt`、`balanced`、`drift_auto` 是否是不同可控路线
 - 新语法是否真实可执行

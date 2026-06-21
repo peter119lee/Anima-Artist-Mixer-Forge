@@ -11,7 +11,7 @@ The bundled `AnimaArtistPack` node provides a one-shot experience: write your ar
 
 Product principle: the default path is predictable artist mixing on top of the base model. It should preserve the prompt and expose artist influence in a controllable way; automatic low-drift routing and stabilizers are opt-in tools, not the default style source.
 
-The current release (v26) keeps the original controllable artist-mixer path, then makes the preset workflow clearer and safer. `balanced` stays close to the original mixer behavior; `prompt_passthrough` gives no-mixer/direct-prompt parity while preserving positive `1.2::tag::` weighting syntax; `drift_auto` and the scene presets are opt-in low-drift routes. v26 also supports prefix artist weights (`1.2::artist::`), base-prompt tag weights (`1.2::masterpiece::`), negative artist weights for style subtraction, timing fades (`%0.0-0.45~0.1`), recipes, the layer probe, VRAM controls, a CFG correctness fix for batch sizes > 1, sample workflow fixes, and tests/CI. Existing per-artist layer and timing routes remain supported. See [CHANGELOG.md](CHANGELOG.md).
+The current release (v26) keeps the original controllable artist-mixer path, then makes the preset workflow clearer and safer. `balanced` stays close to the original mixer behavior; `prompt_passthrough` uses the no-mixer/direct-prompt path while preserving positive `1.2::tag::` weighting syntax; `drift_auto` and the scene presets are opt-in low-drift routes. v26 also supports prefix artist weights (`1.2::artist::`), base-prompt tag weights (`1.2::masterpiece::`), negative artist weights for style subtraction, timing fades (`%0.0-0.45~0.1`), recipes, the layer probe, VRAM controls, a CFG correctness fix for batch sizes > 1, sample workflow fixes, and tests/CI. Existing per-artist layer and timing routes remain supported. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick links
 
@@ -56,7 +56,7 @@ windows.
 
 - Top text box of `AnimaArtistPack`: your artist chain (comma or newline separated)
 - Fastest first run: use `AnimaArtistStarter`, fill `artist_table`, then follow its in-UI guide
-- Use `AnimaArtistChainBuilder` when you do not want to hand-write `::weight`, `@layers`, and `%timing`
+- Use `AnimaArtistChainBuilder` when you do not want to hand-write `1.2::artist::`, `@layers`, and `%timing`
 - Builder's three visible rows are only shortcuts; use its `artist_table` field for larger chains
 - Use `AnimaArtistChainPreview` to validate a chain before paying the CLIP encoding cost
 - Bottom text box: the main prompt (no need to repeat artist names here)
@@ -108,7 +108,7 @@ wlop, 1.2::sakimichan::, (krenz:0.7), -0.4::pixiv_style::
 - `-0.4::name::` — negative injection weight: subtracts that artist's style direction instead of adding it (style subtraction); range is [-4, 4]
 - `1.2::masterpiece::` in the base prompt — tag weighting, expanded to normal prompt weight syntax before encoding
 - Older postfix forms like `::name::1.2` still load for compatibility, but new examples use prefix syntax
-- In v25+, any valid `::weight` automatically disables normalization at runtime so explicit weights stay absolute
+- Any valid injection weight automatically disables normalization at runtime so explicit weights stay absolute
 - Per-artist layer routing is supported with `@layers`: `wlop@0-8, krenz@33%-67%, hiten@0.67-1.0`
 - Per-artist sampling timing is supported with `%start-end`: `wlop@0-8%0.0-0.45, krenz@9-18%0.45-0.85`
 - Timing windows can fade in/out smoothly with `~fade` (v26+): `wlop%0.0-0.45~0.1` ramps the artist's weight with a smoothstep over a 0.1-progress-wide edge instead of switching on/off abruptly
@@ -135,9 +135,9 @@ v26 keeps `balanced` close to the original mixer behavior by default. Common lay
 | `contribution_balance` | optional | Delta-strength equalizer for artist dominance flips; default off until it has stronger live evidence |
 | `mixed_delta_cap` | optional | Caps the final mixed artist delta against base attention energy before fusion; default off while it is evaluated as a live A/B candidate |
 | `artist_anchor_q` | heaviest | Replace user-seed Q with a fixed-seed anchor's Q; `anchor_lock` now uses one anchor, user-Q blend, strength 0.9, and auto layers 9-15 to reduce pose artifacts |
-| `anchor_base_norm_ref` | optional | Anchor the norm reference too when testing `anchor_q + match_base_norm`; useful for A/B, not the measured default |
+| `anchor_base_norm_ref` | optional | Anchor the norm reference too when testing `anchor_q + match_base_norm`; off by default and mainly useful for A/B |
 
-Recommended progression: start with `balanced` for original-style behavior, then use `stable_seed` or `drift_auto` for content-safer cross-seed work. Use `prompt_passthrough` only when you want no-mixer/direct-prompt parity while keeping positive artist weight syntax such as `1.2::@artist::`; it returns the unpatched model and does not support negative style subtraction, layer routes, or timing routes. For lower drift, `drift_auto` keeps broad 4+ artist prompts on the style-mixer path: wide / background-heavy scenes route to `scene_lock`, simple fullbody and broad portrait/street prompts route to `drift_soft`, 4+ artist close-ups route to `stable_seed` plus `mixed_delta_cap_ratio=0.75`, and smaller close-up face prompts route to `face_lock`. Use `compatibility_safe` explicitly for regional prompting or other attention patchers, not as the default multi-artist style path. See [docs/USAGE.md](docs/USAGE.md) for detailed mechanics and tuning.
+Recommended progression: start with `balanced` for original-style behavior, then use `stable_seed` or `drift_auto` for content-safer cross-seed work. Use `prompt_passthrough` only when you want the no-mixer/direct-prompt path while keeping positive artist weight syntax such as `1.2::@artist::`; it returns the unpatched model and does not support negative style subtraction, layer routes, or timing routes. For lower drift, `drift_auto` keeps broad 4+ artist prompts on the style-mixer path: wide / background-heavy scenes route to `scene_lock`, simple fullbody and broad portrait/street prompts route to `drift_soft`, 4+ artist close-ups route to `stable_seed` plus `mixed_delta_cap_ratio=0.75`, and smaller close-up face prompts route to `face_lock`. Use `compatibility_safe` explicitly for regional prompting or other attention patchers, not as the default multi-artist style path. See [docs/USAGE.md](docs/USAGE.md) for detailed mechanics and tuning.
 
 ## Style amplification
 
@@ -150,17 +150,17 @@ Recommended progression: start with `balanced` for original-style behavior, then
 
 ## Performance notes
 
-Generation time scales with artist count. Per the math of `output_avg`, each layer runs `N + 1` cross-attention forwards (N artists + base). Approximate measured cost (varies by GPU):
+Generation time scales with the number of active artists, active layers, and active sampling steps. In `output_avg` / `lowrank_avg`, each active layer computes the base attention plus one attention pass per active artist, so multi-artist `balanced` is expected to be slower than no mixer.
 
-| Configuration | Relative time |
+| Path | Speed expectation |
 |---|---|
-| 1 artist | 1.0x |
-| 4 artists | ~1.4x |
-| 8 artists | ~1.7x |
-| 5 artists + `artist_static_capture` (K=6) | ~1.1x |
-| 5 artists + `artist_anchor_q` (cached) | ~1.05x |
+| no mixer / `prompt_passthrough` | close to the ordinary Anima prompt path |
+| `balanced`, `drift_soft`, `scene_lock`, `face_lock`, `stable_seed` | slower as active artist count increases |
+| `fast_preview` / `compatibility_safe` | usually faster concat path, but less precise as an artist mixer |
+| layer routes / timing routes | reduce cost only for the layers or sampling steps where artists are inactive |
+| `artist_static_capture` / `artist_anchor_q` | expert A/B controls; may help some repeated-seed workflows but can add overhead or constrain style, so they are not the default speed recommendation |
 
-**Strongly recommended**: connect `AnimaArtistSimpleOptions` and limit either the layer shortcut or the sampling-step range. Both can dramatically reduce generation time with minimal quality loss. With many artists at high resolution, use `AnimaArtistOptions (Expert)` only when you need VRAM caps, cache offload, or stabilizer A/B. See the docs for details.
+For speed, first limit the active artist count, layer range, or sampling window through `AnimaArtistSimpleOptions`. Quality impact is prompt- and artist-dependent, so check the result rather than treating a faster setting as automatically equivalent.
 
 ## Measuring where styles live (v26)
 
@@ -176,13 +176,13 @@ This node **cannot achieve the near-lossless artist mixing that SDXL does**. Ani
 
 ## Development
 
-The implementation lives in the `anima_mixer/` package (`nodes.py` is a compatibility shim). Run the test suite with:
+The implementation lives in the `anima_mixer/` package (`nodes.py` is a compatibility shim). Run the broad local test suite with:
 
 ```
-python -m unittest discover -s tests -v
+python -m pytest -q
 ```
 
-CI (ruff + unittest on Python 3.10/3.12) runs on every push and PR.
+CI runs `ruff` plus `unittest` on Python 3.10/3.12 for every push and PR.
 
 ## Acknowledgements
 
