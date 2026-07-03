@@ -11,6 +11,9 @@ on:
 jobs:
   publish-node:
     name: Publish Custom Node to Registry
+    # Forks have no registry token and must not publish; only the canonical
+    # repo (or an explicit manual dispatch) runs this job.
+    if: github.repository == 'An1X3R/Anima-Artist-Mixer' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       issues: write
