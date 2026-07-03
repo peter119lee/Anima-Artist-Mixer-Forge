@@ -6,11 +6,11 @@
 
 ## 运行方式
 
-先确认 ComfyUI 已启动，并且模型文件名和本机一致：
+先确认 ComfyUI 已启动。这些 workflow 使用占位模型文件名，运行前请把各 loader 改成本机实际文件名：
 
-- UNET: `Anima\anime\anima_baseV10.safetensors`
-- CLIP: `qwen_3_06b_base.safetensors`
-- VAE: `qwen_image_vae.safetensors`
+- UNET（`UNETLoader` 的 `unet_name`）: `anima-base-v1.0.safetensors`
+- CLIP（`CLIPLoader` 的 `clip_name`）: `qwen_3_06b_base.safetensors`
+- VAE（`VAELoader` 的 `vae_name`）: `qwen_image_vae.safetensors`
 
 运行单个 workflow：
 

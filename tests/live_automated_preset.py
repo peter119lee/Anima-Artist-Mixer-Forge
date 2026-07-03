@@ -13,7 +13,6 @@ from typing import Dict
 # Configuration
 COMFYUI_URL = "http://127.0.0.1:8188"
 OUTPUT_DIR = Path("test_results")
-OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Test seed for consistency
 TEST_SEED = 12345
@@ -297,6 +296,8 @@ def generate_report(results: Dict[str, bool]):
 def main():
     print("Anima-Artist-Mixer Automated Test")
     print("=" * 60)
+
+    OUTPUT_DIR.mkdir(exist_ok=True)
 
     # Check ComfyUI status
     print("\nChecking ComfyUI status...")

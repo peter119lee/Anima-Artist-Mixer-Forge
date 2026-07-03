@@ -30,7 +30,7 @@ $server = "http://127.0.0.1:8188"
 
 3. 检查 workflow 里的模型文件名是否与你本机一致：
 
-- UNET: `Anima\anime\anima_baseV10.safetensors`
+- UNET: `anima-base-v1.0.safetensors`
 - CLIP: `qwen_3_06b_base.safetensors`
 - VAE: `qwen_image_vae.safetensors`
 

@@ -2,7 +2,7 @@
   "id": "0a1d14fb-5e7d-4982-b58d-3e2ebbbed0f0",
   "revision": 0,
   "last_node_id": 88,
-  "last_link_id": 217,
+  "last_link_id": 218,
   "nodes": [
     {
       "id": 1,
@@ -69,7 +69,7 @@
           "type": "IMAGE",
           "slot_index": 0,
           "links": [
-            182
+            218
           ]
         }
       ],
@@ -79,47 +79,6 @@
         "Node name for S&R": "VAEDecode"
       },
       "widgets_values": []
-    },
-    {
-      "id": 81,
-      "type": "RTXVideoSuperResolution",
-      "pos": [
-        2817.7879281248233,
-        673.7492273731003
-      ],
-      "size": [
-        285.81015625,
-        106
-      ],
-      "flags": {},
-      "order": 12,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 182
-        }
-      ],
-      "outputs": [
-        {
-          "name": "upscaled_images",
-          "type": "IMAGE",
-          "links": [
-            183
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui_nvidia_rtx_nodes",
-        "ver": "892515e3eb9a4920a131a502a047e47adca9eb0d",
-        "Node name for S&R": "RTXVideoSuperResolution"
-      },
-      "widgets_values": [
-        "scale by multiplier",
-        1.5,
-        "ULTRA"
-      ]
     },
     {
       "id": 46,
@@ -139,7 +98,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 183
+          "link": 218
         }
       ],
       "outputs": [],
@@ -150,108 +109,6 @@
       },
       "widgets_values": [
         "ComfyUI"
-      ]
-    },
-    {
-      "id": 83,
-      "type": "LoraLoader",
-      "pos": [
-        575.9791301204198,
-        690.1853473994228
-      ],
-      "size": [
-        270,
-        126
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model",
-          "type": "MODEL",
-          "link": 189
-        },
-        {
-          "name": "clip",
-          "type": "CLIP",
-          "link": 190
-        }
-      ],
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            204
-          ]
-        },
-        {
-          "name": "CLIP",
-          "type": "CLIP",
-          "links": [
-            205
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.21.1",
-        "Node name for S&R": "LoraLoader"
-      },
-      "widgets_values": [
-        "anima_context_detailer_base10.safetensors",
-        0.3,
-        0.3
-      ]
-    },
-    {
-      "id": 82,
-      "type": "LoraLoader",
-      "pos": [
-        911.9052789280757,
-        635.713930734618
-      ],
-      "size": [
-        270,
-        126
-      ],
-      "flags": {},
-      "order": 8,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model",
-          "type": "MODEL",
-          "link": 204
-        },
-        {
-          "name": "clip",
-          "type": "CLIP",
-          "link": 205
-        }
-      ],
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": []
-        },
-        {
-          "name": "CLIP",
-          "type": "CLIP",
-          "links": []
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.21.1",
-        "Node name for S&R": "LoraLoader"
-      },
-      "widgets_values": [
-        "lighting_base10-000100.safetensors",
-        0.4,
-        0.4
       ]
     },
     {
@@ -351,7 +208,6 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            189,
             212
           ]
         }
@@ -386,7 +242,6 @@
           "name": "CLIP",
           "type": "CLIP",
           "links": [
-            190,
             213,
             214
           ]
@@ -437,7 +292,7 @@
         "Node name for S&R": "AnimaArtistPack"
       },
       "widgets_values": [
-        "::@uof::2,@kieed,@ciloranko,@huanxiang_heitu,@yyb",
+        "1.2::@uof::, @kieed, @ciloranko, @huanxiang_heitu, @yyb",
         "masterpiece, best quality, High Resolution,Esthetic,Excellent,newest,incredibly absurdres,very aesthetic,high detailed,\nyear 2024,year 2025,\n1girl,surtr (arknights), red hair, purple eyes, demon horns, eyewear on head, black bikini, bracelet, jewelry, looking at viewer,\nupper body,"
       ]
     },
@@ -646,54 +501,6 @@
       "LATENT"
     ],
     [
-      182,
-      7,
-      0,
-      81,
-      0,
-      "IMAGE"
-    ],
-    [
-      183,
-      81,
-      0,
-      46,
-      0,
-      "IMAGE"
-    ],
-    [
-      189,
-      8,
-      0,
-      83,
-      0,
-      "MODEL"
-    ],
-    [
-      190,
-      4,
-      0,
-      83,
-      1,
-      "CLIP"
-    ],
-    [
-      204,
-      83,
-      0,
-      82,
-      0,
-      "MODEL"
-    ],
-    [
-      205,
-      83,
-      1,
-      82,
-      1,
-      "CLIP"
-    ],
-    [
       207,
       88,
       0,
@@ -748,6 +555,14 @@
       18,
       0,
       "MODEL"
+    ],
+    [
+      218,
+      7,
+      0,
+      46,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [],

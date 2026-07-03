@@ -413,7 +413,7 @@
         {
           "name": "vae",
           "type": "VAE",
-          "link": 9
+          "link": 11
         }
       ],
       "outputs": [
