@@ -3,8 +3,10 @@
 Three complementary levels of evidence:
 
 - ``AnimaArtistTagCheck``   encoder level, free: compares each artist's
-  conditioning against the base conditioning straight out of the pack. A tag
-  the model does not know encodes almost identically to the base prompt.
+  conditioning against the base conditioning and against the other artists
+  straight out of the pack. Reliably catches duplicate/alias entries and
+  no-op entries; it can NOT tell known tags from unknown ones (validated on
+  live Anima: gibberish and real artists overlap in encoder shift).
 - ``AnimaArtistABVariants`` run level: emits a list of artist-chain variants
   (off / full / solo / leave-one-out / cumulative) so one queue renders a
   same-seed comparison series via ComfyUI's list fan-out.
@@ -30,11 +32,12 @@ from .patching import extract_conditioning
 
 logger = logging.getLogger(__name__)
 
-# Provisional thresholds, sanity-checked against live Anima encodes; the
-# report always prints the raw numbers so the flags stay advisory.
-TAG_DEAD_SIM = 0.9995     # cosine vs base above this => tag adds ~nothing
+# Thresholds calibrated against live Anima encodes (2026-07-04): real artist
+# tags shift the pooled encoding by ~0.013-0.039 and OVERLAP with gibberish
+# tags (0.015-0.035), so no shift threshold can detect unknown tags. Only the
+# mathematical extremes carry a verdict; the report prints raw numbers.
+TAG_NOOP_DIST = 1e-4      # shift vs base below this => entry adds ~nothing
 TAG_DUP_SIM = 0.999       # pairwise cosine above this => near-duplicate pair
-TAG_WEAK_REL = 0.3        # distance below this fraction of the median => weak
 
 IMPACT_CHANGE_THRESHOLD = 0.04   # per-pixel mean-abs diff counted as "changed"
 IMPACT_AUTO_GAIN_MAX = 10000.0
@@ -64,7 +67,7 @@ def _cosine(a, b):
 
 
 class AnimaArtistTagCheck:
-    """Encoder-level dead-tag detector: no sampling, no extra encodes."""
+    """Encoder-level duplicate / no-op detector: no sampling, no extra encodes."""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -129,11 +132,6 @@ class AnimaArtistTagCheck:
                 "dist": max(0.0, 1.0 - sim), "delta": delta, "weight": weight,
             })
 
-        dists = sorted(e["dist"] for e in entries)
-        median_dist = dists[len(dists) // 2] if len(dists) % 2 else (
-            (dists[len(dists) // 2 - 1] + dists[len(dists) // 2]) / 2.0
-        )
-
         duplicates = []
         for i in range(len(entries)):
             for j in range(i + 1, len(entries)):
@@ -143,20 +141,18 @@ class AnimaArtistTagCheck:
         dup_members = {idx for pair in duplicates for idx in pair}
         lines = [
             "[AnimaArtistTagCheck] encoder-level distinctiveness "
-            f"({len(entries)} artists; distance = 1 - cosine vs base prompt):",
+            f"({len(entries)} artists; shift = 1 - cosine vs base prompt):",
         ]
         for idx, e in enumerate(entries):
             flags = []
-            if e["sim"] >= TAG_DEAD_SIM:
-                flags.append("[DEAD?]")
-            elif len(entries) >= 2 and e["dist"] < TAG_WEAK_REL * median_dist:
-                flags.append("[WEAK]")
+            if e["dist"] < TAG_NOOP_DIST:
+                flags.append("[NO-OP]")
             if idx in dup_members:
                 flags.append("[DUPLICATE]")
             if not flags:
                 flags.append("[OK]")
             lines.append(
-                f"  {' '.join(flags)} {e['label']} — dist {e['dist']:.4f}, "
+                f"  {' '.join(flags)} {e['label']} — shift {e['dist']:.4f}, "
                 f"delta-norm {e['delta']:.3f}x base, weight {e['weight']:.2f}"
             )
         for i, j in duplicates:
@@ -165,17 +161,19 @@ class AnimaArtistTagCheck:
                 "encode almost identically; mixing them adds no second style."
             )
         lines.append(
-            "  legend: [DEAD?] tag adds ~nothing over the base prompt (typo or "
-            "unknown tag); [WEAK] far below the chain median; encoder-level "
-            "only — use AnimaArtistProbe / ABVariants for runtime evidence."
+            "  legend: [NO-OP] encodes identically to the base prompt; "
+            "[DUPLICATE] two entries carry the same style vector (repeat or "
+            "alias). Encoder shift can NOT tell known tags from unknown ones "
+            "(gibberish and real artists overlap on live Anima) — use "
+            "AnimaArtistABVariants or the Layer Probe to see whether an "
+            "artist actually changes the image."
         )
         report = "\n".join(lines)
-        for e in entries:
-            if e["sim"] >= TAG_DEAD_SIM:
-                logger.warning(
-                    "[AnimaArtistTagCheck] '%s' encodes ~identically to the base "
-                    "prompt (cos %.5f)", e["label"], e["sim"],
-                )
+        for i, j in duplicates:
+            logger.warning(
+                "[AnimaArtistTagCheck] '%s' and '%s' encode ~identically "
+                "(duplicate or alias)", entries[i]["label"], entries[j]["label"],
+            )
         return {"ui": {"text": [report]}, "result": (report,)}
 
 

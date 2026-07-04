@@ -63,16 +63,17 @@ class TagCheckTests(unittest.TestCase):
         self.assertIsInstance(report, str)
         return report
 
-    def test_identical_to_base_flagged_dead(self):
+    def test_identical_to_base_flagged_noop(self):
         base = _unit(8, 0)
         report = self._report(_pack(base, [base.clone()], labels=["ghost"]))
-        self.assertIn("[DEAD?] ghost", report)
+        self.assertIn("[NO-OP] ghost", report)
 
     def test_distinct_artist_ok(self):
         report = self._report(_pack(_unit(8, 0), [_unit(8, 1)], labels=["wlop"]))
         self.assertIn("[OK] wlop", report)
-        self.assertNotIn("[DEAD?] wlop", report)
-        self.assertNotIn("[DUPLICATE]", report)
+        self.assertNotIn("[NO-OP] wlop", report)
+        self.assertNotIn("[DUPLICATE] wlop", report)
+        self.assertNotIn("' and '", report)  # no duplicate-pair line
 
     def test_near_duplicate_pair_flagged(self):
         a = _unit(8, 1)
@@ -82,14 +83,16 @@ class TagCheckTests(unittest.TestCase):
         self.assertIn("a1", report)
         self.assertIn("a2", report)
 
-    def test_relatively_weak_artist_flagged(self):
+    def test_small_shift_is_not_flagged(self):
+        # Live calibration (2026-07-04) showed real artists and gibberish
+        # overlap in encoder shift; a small-but-nonzero shift must stay [OK].
         base = _unit(8, 0)
         near = base + 0.15 * _unit(8, 1)  # tiny angle from base
         far1, far2 = _unit(8, 2), _unit(8, 3)
         report = self._report(
-            _pack(base, [near, far1, far2], labels=["weakling", "strong1", "strong2"])
+            _pack(base, [near, far1, far2], labels=["subtle", "strong1", "strong2"])
         )
-        self.assertIn("[WEAK] weakling", report)
+        self.assertIn("[OK] subtle", report)
 
     def test_mixed_sequence_lengths_supported(self):
         report = self._report(
