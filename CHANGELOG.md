@@ -43,6 +43,14 @@ v26.2.0 runtime fixes.
   all three diagnostics nodes wired (variant fan-out + no-mixer baseline
   branch + impact map), counted by the showcase coverage guard.
 
+### Review fixes (pre-release)
+- ImpactMap auto_gain no longer crashes on inputs above torch.quantile's
+  2^24-element cap (e.g. batch 4 x 2048x2048): the p99 estimate subsamples
+  large magnitude tensors.
+- ABVariants keeps variant labels aligned with their chains when an entry
+  parses to no artist (e.g. a decorative bare `::`): such entries are now
+  skipped with a warning instead of desyncing every later label.
+
 ## v27.0.0 (2026-07-04)
 
 Forge fork point. Packaging identity only — runtime behavior is identical to

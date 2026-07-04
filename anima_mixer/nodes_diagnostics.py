@@ -41,6 +41,8 @@ TAG_DUP_SIM = 0.999       # pairwise cosine above this => near-duplicate pair
 
 IMPACT_CHANGE_THRESHOLD = 0.04   # per-pixel mean-abs diff counted as "changed"
 IMPACT_AUTO_GAIN_MAX = 10000.0
+# torch.quantile refuses tensors above 2**24 elements; subsample beyond this.
+_QUANTILE_SAMPLE_CAP = 1 << 20
 
 _HEAT_STOPS = (
     (0.00, (0.00, 0.00, 0.00)),
@@ -190,27 +192,38 @@ def sanitize_label(text):
 
 
 def _chain_names(parts):
-    """Clean artist names for labeling, via the same pipeline the Pack uses."""
-    stripped, _ = parse_artist_timing_routes(list(parts))
-    stripped, _ = parse_artist_layer_routes(stripped)
-    entries = parse_artist_entries(stripped)
+    """One clean artist name per part (None when the part parses to no artist).
+
+    Parses each part individually so the result stays index-aligned with
+    ``parts`` even when an entry (e.g. a decorative bare ``::``) reduces to
+    nothing — whole-list parse_artist_entries silently drops those.
+    """
     names = []
-    for idx, entry in enumerate(entries):
-        name = str(entry[0] or "").strip()
-        names.append(name or f"artist{idx + 1}")
+    for part in parts:
+        stripped, _ = parse_artist_timing_routes([part])
+        stripped, _ = parse_artist_layer_routes(stripped)
+        entries = parse_artist_entries(stripped)
+        name = str(entries[0][0]).strip() if entries else ""
+        names.append(name or None)
     return names
 
 
 def build_variants(artist_chain, mode, include_no_mixer, include_full_mix):
     """Return (chains, labels, report) for one A/B comparison series."""
-    parts = split_artist_chain(artist_chain)
-    names = _chain_names(parts)
-    full_chain = ", ".join(parts)
+    all_parts = split_artist_chain(artist_chain)
     warnings = []
+    parts, names = [], []
+    for part, name in zip(all_parts, _chain_names(all_parts)):
+        if name is None:
+            warnings.append(f"skipped non-artist entry {part!r}.")
+        else:
+            parts.append(part)
+            names.append(name)
+    full_chain = ", ".join(parts)
 
     raw = []  # (chain_text, label_stem)
     if not parts:
-        warnings.append("artist_chain is empty; emitting only the no-mixer baseline.")
+        warnings.append("no artists in artist_chain; emitting only the no-mixer baseline.")
         raw.append(("", "no_mixer"))
     elif mode == "off_vs_full":
         raw.append(("", "no_mixer"))
@@ -346,6 +359,15 @@ def _blur(x_bhwc, kernel):
                         count_include_pad=False).permute(0, 2, 3, 1)
 
 
+def _percentile99(mag):
+    """p99 of a magnitude tensor; subsamples above torch.quantile's size cap."""
+    flat = mag.reshape(-1)
+    if flat.numel() > _QUANTILE_SAMPLE_CAP:
+        step = (flat.numel() + _QUANTILE_SAMPLE_CAP - 1) // _QUANTILE_SAMPLE_CAP
+        flat = flat[::step]
+    return float(torch.quantile(flat, 0.99))
+
+
 def _heat_colors(norm):
     """Map a [B,H,W] magnitude in [0,1] to an RGB heatmap [B,H,W,3]."""
     out = torch.zeros(norm.shape + (3,), dtype=torch.float32)
@@ -422,7 +444,7 @@ class AnimaArtistImpactMap:
         mag = (a - b).abs().mean(dim=-1)  # [B,H,W]
 
         if auto_gain:
-            p99 = float(torch.quantile(mag.flatten(), 0.99))
+            p99 = _percentile99(mag)
             used_gain = min(max(1.0 / max(p99, 1e-6), 1.0), IMPACT_AUTO_GAIN_MAX)
         else:
             used_gain = float(gain)

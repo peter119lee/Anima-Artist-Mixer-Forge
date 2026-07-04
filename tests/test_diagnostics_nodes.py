@@ -175,7 +175,7 @@ class ABVariantsTests(unittest.TestCase):
     def test_empty_chain_warns(self):
         chains, labels, report = build_variants("", "solo_each", True, True)
         self.assertEqual(chains, [""])
-        self.assertIn("empty", report.lower())
+        self.assertIn("no artists", report.lower())
 
     def test_node_outputs_lists(self):
         node = AnimaArtistABVariants()
@@ -190,6 +190,22 @@ class ABVariantsTests(unittest.TestCase):
     def test_sanitize_label(self):
         self.assertEqual(sanitize_label('a b\\c:d*e?"f<g>h|i/j'), "a_b_c_d_e_f_g_h_i_j")
         self.assertTrue(sanitize_label("") != "")
+
+    def test_decorative_token_skipped_and_labels_stay_aligned(self):
+        # A bare '::' parses to no artist; whole-list parsing drops it, which
+        # previously desynced parts from names and mislabeled every variant
+        # after it (review finding, 2026-07-04).
+        chains, labels, report = build_variants("wlop, ::, krenz", "solo_each", False, False)
+        self.assertEqual(chains, ["wlop", "krenz"])
+        self.assertIn("solo_wlop", labels[0])
+        self.assertIn("solo_krenz", labels[1])
+        self.assertIn("skipped non-artist entry", report)
+
+    def test_decorative_token_leave_one_out_removes_the_right_artist(self):
+        chains, labels, _ = build_variants("wlop, ::, krenz", "leave_one_out", False, False)
+        self.assertEqual(chains, ["krenz", "wlop"])
+        self.assertIn("without_wlop", labels[0])
+        self.assertIn("without_krenz", labels[1])
 
 
 class ImpactMapTests(unittest.TestCase):
@@ -249,6 +265,14 @@ class ImpactMapTests(unittest.TestCase):
         b = a + 0.002
         out = self._run(a, b, layout="heatmap", auto_gain=True)
         self.assertGreater(float(out["result"][0].max()), 0.5)
+
+    def test_percentile99_survives_quantile_size_cap(self):
+        # torch.quantile raises on tensors above 2**24 elements; the helper
+        # must subsample instead of crashing (review finding, 2026-07-04).
+        big = torch.zeros((1 << 24) + 5)
+        self.assertEqual(diag._percentile99(big), 0.0)
+        ramp = torch.linspace(0.0, 1.0, 3_000_000)
+        self.assertAlmostEqual(diag._percentile99(ramp), 0.99, delta=0.005)
 
     def test_fixed_gain_stays_in_range(self):
         a = torch.zeros(1, 16, 16, 3)
