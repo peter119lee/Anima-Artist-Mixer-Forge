@@ -1,5 +1,28 @@
 # Changelog
 
+## v27.4.0 (2026-07-05)
+
+"Did you mean" tag suggestions plus an internal module reorganization.
+No node signatures changed; renders are bit-identical to v27.3.0
+(verified on GPU: three same-seed production renders hash-equal).
+
+- `AnimaArtistChainPreview` / `AnimaArtistTagCheck`: a not-found
+  vocabulary entry now appends "did you mean: 'x' (N posts)?"
+  suggestions — missing-disambiguator and substring hits ranked by post
+  count first (`yuchi` -> `yuchi_(salmon-1000)`), then close fuzzy
+  matches for typos. Non-artist categories are never suggested.
+- Internal: `nodes_core.py` / `nodes_ui.py` / `wrapper.py` split into
+  focused modules under 800 lines (`nodes_pack`, `nodes_probe`,
+  `nodes_options`, `nodes_recipes`, `wrapper_stabilizers`). Every
+  pre-split import path keeps working via re-exports; the ComfyUI
+  entry point is untouched.
+- Investigated and rejected: trimming the encoder's 512-token zero
+  padding off `combine=concat` K/V via `real_lens`. A live A/B showed
+  the padding's softmax dilution is load-bearing for the concat preset
+  calibration — trimming collapsed image quality. The finding is pinned
+  as comments at `_combine_concat` and `build_artists` so it is not
+  re-attempted; shipped behavior is unchanged.
+
 ## v27.3.0 (2026-07-05)
 
 Bundled Danbooru tag vocabulary: the reliable "does this tag exist" check

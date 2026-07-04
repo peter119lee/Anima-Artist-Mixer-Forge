@@ -5,12 +5,24 @@ How to add a new node to this pack and ship it to the ComfyUI registry.
 ## Repo layout
 
 - `anima_mixer/` — the real package.
-  - `nodes_core.py` — model-patching nodes (`AnimaArtistBasic`, `AnimaArtistPack`,
-    `AnimaArtistPresetApply`, `AnimaArtistCrossAttn`, probe nodes).
-  - `nodes_ui.py` — chain building / presets / recipes / inspector nodes.
-  - `wrapper.py` — the cross-attention forward wrapper (mixing math).
+  - `nodes_core.py` — the model-patching engine nodes (`AnimaArtistCrossAttn`,
+    `AnimaArtistPresetApply`) and the shared runtime-state builder.
+  - `nodes_pack.py` — `AnimaArtistBasic` and `AnimaArtistPack` (encoding + packing).
+  - `nodes_probe.py` — `AnimaArtistProbe` / `AnimaArtistProbeReport`.
+  - `nodes_ui.py` — chain building / preview / starter / inspector nodes.
+  - `nodes_options.py` — `AnimaArtistOptions` / `AnimaArtistSimpleOptions`.
+  - `nodes_recipes.py` — `AnimaArtistRecipeSave` / `AnimaArtistRecipeLoad`.
+  - `nodes_diagnostics.py` — `AnimaArtistTagCheck` / `AnimaArtistABVariants` /
+    `AnimaArtistImpactMap`.
+  - `wrapper.py` — the cross-attention forward wrapper (dispatch + fusion math).
+  - `wrapper_stabilizers.py` — `StabilizerMixin` (EMA, static capture, norm
+    lock, delta cap, anchor-Q).
   - `patching.py`, `anchor.py`, `parsing.py`, `chain_tools.py`, `options.py`,
-    `recipe.py`, `constants.py`, `math_utils.py` — supporting modules.
+    `recipe.py`, `constants.py`, `math_utils.py`, `tag_vocab.py`,
+    `probe_stats.py` — supporting modules.
+  - Compat contract: `nodes_core` re-exports the pack/probe node classes and
+    `nodes_ui` re-exports the options/recipes node classes, so pre-v27.4
+    import paths keep working. Keep every module under 800 lines.
 - `__init__.py` / `nodes.py` — ComfyUI entry point and a compatibility shim;
   both re-export the mappings from `anima_mixer/__init__.py`.
 - `tests/` — the pytest suite CI runs. `tests/live_*.py` are manual scripts
@@ -25,10 +37,10 @@ How to add a new node to this pack and ship it to the ComfyUI registry.
 
 ## Adding a node
 
-1. Implement the class in `anima_mixer/nodes_core.py` (if it patches the
-   model) or `anima_mixer/nodes_ui.py` (pure UI / text / packaging), following
-   the existing `INPUT_TYPES` / `RETURN_TYPES` / `FUNCTION` / `CATEGORY`
-   pattern used by its neighbors.
+1. Implement the class in the `anima_mixer/nodes_*.py` module whose nodes it
+   belongs with (see the layout above; e.g. diagnostics nodes go in
+   `nodes_diagnostics.py`), following the existing `INPUT_TYPES` /
+   `RETURN_TYPES` / `FUNCTION` / `CATEGORY` pattern used by its neighbors.
 2. Register it in `anima_mixer/__init__.py`: add the import, a
    `NODE_CLASS_MAPPINGS` entry, and a `NODE_DISPLAY_NAME_MAPPINGS` entry.
    - Keep the `AnimaArtist` id prefix.
