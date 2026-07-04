@@ -65,6 +65,13 @@ def _should_reraise(e):
 
 
 def _combine_concat(individuals, weights):
+    # Each artist tensor arrives zero-padded to 512 tokens by Anima's
+    # preprocess_text_embeds. Do NOT trim the padding via real_lens: a zero
+    # key row still earns exp(0) softmax mass, and that dilution is
+    # load-bearing — the concat presets are calibrated against it. A live A/B
+    # (2026-07-05, seed 20260704, 3 artists, fast_preview/compatibility_safe
+    # at production settings) showed trimming multiplies the artists'
+    # relative K/V mass ~20x and collapses the image into smearing artifacts.
     parts = [a * float(w) for a, w in zip(individuals, weights)]
     return torch.cat(parts, dim=1)
 

@@ -218,7 +218,12 @@ def preprocess_one(dm, raw, ids, weights, target_device, target_dtype):
 
 
 def build_artists(state, ref_context):
-    """Lazily preprocess every artist conditioning on first forward."""
+    """Lazily preprocess every artist conditioning on first forward.
+
+    ``real_lens`` records each artist's true token count before Anima's
+    512-token zero pad. It is diagnostic only: trimming the concat K/V to it
+    was tried and reverted — see the note on ``wrapper._combine_concat``.
+    """
     if state.get("individuals") is not None:
         return state["individuals"], state["real_lens"]
     dm = state["dm_ref"]
