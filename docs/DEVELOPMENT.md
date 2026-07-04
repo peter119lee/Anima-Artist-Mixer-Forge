@@ -9,7 +9,7 @@ How to add a new node to this pack and ship it to the ComfyUI registry.
     `AnimaArtistPresetApply`) and the shared runtime-state builder.
   - `nodes_pack.py` — `AnimaArtistBasic` and `AnimaArtistPack` (encoding + packing).
   - `nodes_probe.py` — `AnimaArtistProbe` / `AnimaArtistProbeReport`.
-  - `nodes_ui.py` — chain building / preview / starter / inspector nodes.
+  - `nodes_ui.py` — chain building / preview / preset / starter / inspector nodes.
   - `nodes_options.py` — `AnimaArtistOptions` / `AnimaArtistSimpleOptions`.
   - `nodes_recipes.py` — `AnimaArtistRecipeSave` / `AnimaArtistRecipeLoad`.
   - `nodes_diagnostics.py` — `AnimaArtistTagCheck` / `AnimaArtistABVariants` /
