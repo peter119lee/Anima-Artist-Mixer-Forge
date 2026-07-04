@@ -108,10 +108,10 @@ class ProbeReportV2Tests(unittest.TestCase):
         out = AnimaArtistProbeReport().report("test-v2")
         report = out["result"][0]
         self.assertIn("contribution split", report)
-        self.assertIn("strong_artist", report)
-        self.assertIn("%", report)
+        self.assertIn("strong_artist: 75.0%", report)
         self.assertIn("dominant", report)
-        self.assertIn("weak", report)
+        self.assertIn("weak_artist: 25.0%", report)
+        self.assertIn("balanced", report)
         self.assertIn("per-step influence", report)
         # Legacy sections must survive.
         self.assertIn("relative style influence per layer", report)
