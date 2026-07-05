@@ -28,7 +28,12 @@ How to add a new node to this pack and ship it to the ComfyUI registry.
 - `tests/` — the pytest suite CI runs. `tests/live_*.py` are manual scripts
   that need a running ComfyUI at `http://127.0.0.1:8188`.
 - `workflow/` and `sample workflow.json` — bundled workflows, validated by
-  `tests/test_workflow_json.py`.
+  `tests/test_workflow_json.py`. JSON files directly in `workflow/` appear in
+  ComfyUI's **Workflow → Browse Templates** browser (card title = filename,
+  thumbnail = same-name `.jpg`), so top-level files must be UI-format
+  workflows with beginner-friendly names; API-format payloads and doc-guided
+  sets live in subfolders (`pr4_self_test_api/`, `node_usage_showcase/`),
+  which the template scan does not descend into.
 - `anima_mixer/data/danbooru_tags.csv.gz` — bundled Danbooru tag metadata
   used by the ChainPreview/TagCheck vocabulary check; rebuild with
   `tools/build_tag_vocab.py` (provenance in its docstring). Keep the

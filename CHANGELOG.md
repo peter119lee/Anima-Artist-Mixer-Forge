@@ -1,5 +1,20 @@
 # Changelog
 
+## v27.4.1 (2026-07-05)
+
+Onboarding: you can now get a first image without reading any docs.
+
+- The pack ships workflow templates that appear in ComfyUI's
+  **Workflow → Browse Templates** browser: `01_quick_start` (one
+  `AnimaArtistBasic` node between the loaders and the KSampler, prefilled
+  artists/prompt/fixed seed — the first queue reproduces the template
+  thumbnail), `02_preset_sample` (the multi-node preset route), and the
+  existing `artist-layer-role-routing`, each with a real render as its
+  thumbnail.
+- README opens with a "First image in 60 seconds" section: the three
+  model files you need, the template-browser path, and what to edit
+  first. No node behavior changed.
+
 ## v27.4.0 (2026-07-05)
 
 "Did you mean" tag suggestions plus an internal module reorganization.

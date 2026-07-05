@@ -1,0 +1,583 @@
+{
+  "id": "0a1d14fb-5e7d-4982-b58d-3e2ebbbed0f0",
+  "revision": 0,
+  "last_node_id": 88,
+  "last_link_id": 218,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "VAELoader",
+      "pos": [
+        977.0603742950271,
+        1020.9855153282839
+      ],
+      "size": [
+        270,
+        58
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.21.1",
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "qwen_image_vae.safetensors"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "VAEDecode",
+      "pos": [
+        2496.892403135036,
+        718.0479801791682
+      ],
+      "size": [
+        210.37067246591369,
+        48.22396692539701
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 39
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            218
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.40",
+        "Node name for S&R": "VAEDecode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 46,
+      "type": "SaveImage",
+      "pos": [
+        3204.3601503384193,
+        660.5728355330601
+      ],
+      "size": [
+        628.3398654819198,
+        474.99263644890596
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 218
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.20.1",
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "ComfyUI"
+      ]
+    },
+    {
+      "id": 19,
+      "type": "EmptyLatentImage",
+      "pos": [
+        1837.622905161346,
+        936.5580522024068
+      ],
+      "size": [
+        270,
+        106
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            40
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.40",
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        824,
+        1072,
+        1
+      ]
+    },
+    {
+      "id": 6,
+      "type": "CLIPTextEncode",
+      "pos": [
+        1393.7327118774401,
+        951.3606450813672
+      ],
+      "size": [
+        402.75460950201375,
+        140.89907424699106
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 214
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            20
+          ]
+        }
+      ],
+      "title": "CLIP Text Encode (Negative Prompt)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.65",
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "bad hand,extra toes,fat thighs,thick thighs,low resolution,worst quality, low quality,lowres,jpeg,  bad composition, "
+      ]
+    },
+    {
+      "id": 8,
+      "type": "UNETLoader",
+      "pos": [
+        177.0163395407595,
+        654.3498195650126
+      ],
+      "size": [
+        307.5999755859375,
+        82
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            212
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.11.0",
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "anima-base-v1.0.safetensors",
+        "default"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "CLIPLoader",
+      "pos": [
+        186.7545018606725,
+        781.2412295018056
+      ],
+      "size": [
+        270,
+        106
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            213,
+            214
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.11.0",
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "qwen_3_06b_base.safetensors",
+        "stable_diffusion",
+        "default"
+      ]
+    },
+    {
+      "id": 78,
+      "type": "AnimaArtistPack",
+      "pos": [
+        1375.867706674851,
+        371.4629103346162
+      ],
+      "size": [
+        435.1659976719732,
+        500.21335464394906
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 213
+        }
+      ],
+      "outputs": [
+        {
+          "name": "artist_pack",
+          "type": "ANIMA_PACK",
+          "links": [
+            208
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AnimaArtistPack"
+      },
+      "widgets_values": [
+        "1.2::@uof::, @kieed, @ciloranko, @huanxiang_heitu, @yyb",
+        "masterpiece, best quality, High Resolution,Esthetic,Excellent,newest,incredibly absurdres,very aesthetic,high detailed,\nyear 2024,year 2025,\n1girl,surtr (arknights), red hair, purple eyes, demon horns, eyewear on head, black bikini, bracelet, jewelry, looking at viewer,\nupper body,"
+      ]
+    },
+    {
+      "id": 18,
+      "type": "KSampler",
+      "pos": [
+        2167.8941329447453,
+        630.1295505037123
+      ],
+      "size": [
+        286.3216050917681,
+        474
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 217
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 211
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 20
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 40
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "slot_index": 0,
+          "links": [
+            39
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.40",
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        1078925437746991,
+        "randomize",
+        32,
+        5,
+        "er_sde",
+        "beta",
+        1
+      ]
+    },
+    {
+      "id": 88,
+      "type": "AnimaArtistPreset",
+      "pos": [
+        1404.1825957184926,
+        1126.0328667317556
+      ],
+      "size": [
+        330,
+        214
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "preset",
+          "type": "ANIMA_PRESET",
+          "links": [
+            207
+          ]
+        },
+        {
+          "name": "advanced_options",
+          "type": "ANIMA_OPTS",
+          "links": null
+        },
+        {
+          "name": "summary",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AnimaArtistPreset"
+      },
+      "widgets_values": [
+        "balanced",
+        1,
+        true,
+        "auto",
+        ""
+      ],
+      "title": "Preset: balanced"
+    },
+    {
+      "id": 87,
+      "type": "AnimaArtistPresetApply",
+      "pos": [
+        1843.218968732128,
+        588.2073084759128
+      ],
+      "size": [
+        310,
+        214
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 212
+        },
+        {
+          "name": "artist_pack",
+          "type": "ANIMA_PACK",
+          "link": 208
+        },
+        {
+          "name": "preset",
+          "shape": 7,
+          "type": "ANIMA_PRESET",
+          "link": 207
+        },
+        {
+          "name": "advanced_options",
+          "shape": 7,
+          "type": "ANIMA_OPTS",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            217
+          ]
+        },
+        {
+          "name": "base_prompt",
+          "type": "CONDITIONING",
+          "links": [
+            211
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AnimaArtistPresetApply"
+      },
+      "widgets_values": [
+        true,
+        false
+      ],
+      "title": "Apply preset: balanced"
+    }
+  ],
+  "links": [
+    [
+      5,
+      1,
+      0,
+      7,
+      1,
+      "VAE"
+    ],
+    [
+      20,
+      6,
+      0,
+      18,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      39,
+      18,
+      0,
+      7,
+      0,
+      "LATENT"
+    ],
+    [
+      40,
+      19,
+      0,
+      18,
+      3,
+      "LATENT"
+    ],
+    [
+      207,
+      88,
+      0,
+      87,
+      2,
+      "ANIMA_PRESET"
+    ],
+    [
+      208,
+      78,
+      0,
+      87,
+      1,
+      "ANIMA_PACK"
+    ],
+    [
+      211,
+      87,
+      1,
+      18,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      212,
+      8,
+      0,
+      87,
+      0,
+      "MODEL"
+    ],
+    [
+      213,
+      4,
+      0,
+      78,
+      0,
+      "CLIP"
+    ],
+    [
+      214,
+      4,
+      0,
+      6,
+      0,
+      "CLIP"
+    ],
+    [
+      217,
+      87,
+      0,
+      18,
+      0,
+      "MODEL"
+    ],
+    [
+      218,
+      7,
+      0,
+      46,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7390069383721929,
+      "offset": [
+        -1626.5611467764222,
+        -239.93252382215798
+      ]
+    },
+    "qgn_navigation_groups": [],
+    "qgn_locked": false,
+    "frontendVersion": "1.43.18"
+  },
+  "version": 0.4
+}

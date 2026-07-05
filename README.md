@@ -13,6 +13,33 @@ A ComfyUI custom node pack that enables **multi-artist mixing** for the Anima mo
 > `anima-artist-mixer`).
 
 ![surtr](docs/images/hero.jpg)
+
+## First image in 60 seconds
+
+You need the three Anima model files in your ComfyUI folders: the Anima
+UNET (`models/diffusion_models`), the `qwen_3_06b_base` text encoder
+(`models/text_encoders`), and `qwen_image_vae` (`models/vae`) — the same
+files every plain Anima workflow uses.
+
+1. Install the pack (see [Installation](#installation)) and restart ComfyUI.
+2. Open the menu **Workflow → Browse Templates**, find
+   **Anima-Artist-Mixer-Forge** in the sidebar, and open **01_quick_start**.
+   (On older frontends without the template browser: drag
+   [`workflow/01_quick_start.json`](workflow/01_quick_start.json) onto the canvas.)
+3. Point the three loader nodes at your Anima files, then press **Queue**.
+
+That's it — the template ships with three artists (`@uof, @kieed, @ciloranko`),
+a working prompt, and a fixed seed, so the very first queue reproduces the
+template's thumbnail. Then make it yours: put **your artists** (comma
+separated) in the top box of the big node and **your prompt** in the bottom
+box, and switch `preset` to `strong_style` when you want more style.
+
+The other templates in the browser: **02_preset_sample** is the multi-node
+preset route (`AnimaArtistPack -> AnimaArtistPresetApply`) you graduate to
+when you need per-artist weights and routing, and
+**artist-layer-role-routing** shows character / clothing / background
+layer routing.
+
 ## What it does
 
 Anima uses an LLM as its text encoder. When multiple artist tags are stacked in a single prompt, the LLM's contextualization causes them to interfere with each other, producing a conditioning that resembles neither artist clearly. This node encodes each artist independently and mixes them at the model's cross-attention layer, sidestepping the interference at the prompt-encoding stage.
