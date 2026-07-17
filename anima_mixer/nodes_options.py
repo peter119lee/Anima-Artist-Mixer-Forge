@@ -402,6 +402,20 @@ class AnimaArtistOptions:
                         ),
                     },
                 ),
+                "artist_q_reuse": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "tooltip": (
+                            "Experimental speed-up: project attention Q once per "
+                            "step and reuse it for every artist K/V (numerically "
+                            "validated on first use).\n"
+                            "OFF by default: the fp16 kernel difference shifts "
+                            "same-seed renders (~17% of pixels in live A/B) and "
+                            "it bypasses TeaCache-style attention patches."
+                        ),
+                    },
+                ),
                 "low_vram_cache": (
                     "BOOLEAN",
                     {
@@ -547,6 +561,7 @@ class AnimaArtistOptions:
         layer_filter="",
         compatibility_mode=False,
         max_batch_artists=0,
+        artist_q_reuse=False,
         low_vram_cache=False,
         match_base_norm=False,
         anchor_base_norm_ref=False,
@@ -579,6 +594,7 @@ class AnimaArtistOptions:
                 "layer_filter": str(layer_filter or ""),
                 "compatibility_mode": bool(compatibility_mode),
                 "max_batch_artists": int(max_batch_artists),
+            "artist_q_reuse": bool(artist_q_reuse),
                 "low_vram_cache": bool(low_vram_cache),
                 "match_base_norm": bool(match_base_norm),
                 "anchor_base_norm_ref": bool(anchor_base_norm_ref),

@@ -148,6 +148,7 @@ def _build_runtime_state(
         ),
         "anchor_refresh_each_step": bool(adv.get("anchor_refresh_each_step", False)),
         "max_batch_artists": int(adv.get("max_batch_artists", 0) or 0),
+        "artist_q_reuse": bool(adv.get("artist_q_reuse", False)),
         "low_vram_cache": bool(adv.get("low_vram_cache", False)),
         "match_base_norm": bool(adv.get("match_base_norm", False)),
         "anchor_base_norm_ref": bool(adv.get("anchor_base_norm_ref", False)),

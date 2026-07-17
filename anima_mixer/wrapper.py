@@ -516,8 +516,17 @@ class CrossAttnWrapper(StabilizerMixin, nn.Module):
     # in comfy/ldm/cosmos/predict2.py), so Q projected once from x is exact
     # for every artist K/V. A first-use numeric validation against the
     # standard path guards against attention-module drift.
+    #
+    # OPT-IN (artist_q_reuse, default off): a live A/B (2026-07-17, seed
+    # 20260704, 3 artists, balanced at production settings) measured 17% of
+    # pixels shifted vs the standard path — the fp16 kernel difference passes
+    # the 2e-3 validation tolerance but compounds over 32 steps. It also
+    # bypasses any third-party patch sitting on the attention forward
+    # (TeaCache-style wrappers), so it must never be the silent default.
 
     def _supports_q_reuse(self):
+        if not self._st.get("artist_q_reuse", False):
+            return False
         module = self.original_module
         return bool(
             module is not None

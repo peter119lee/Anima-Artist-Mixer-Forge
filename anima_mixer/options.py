@@ -121,6 +121,7 @@ def base_advanced_options():
         "layer_filter": "",
         "compatibility_mode": False,
         "max_batch_artists": 0,
+        "artist_q_reuse": False,
         "low_vram_cache": False,
         "match_base_norm": False,
         "anchor_base_norm_ref": False,

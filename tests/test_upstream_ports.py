@@ -148,10 +148,28 @@ class QReuseBatchingTests(unittest.TestCase):
         w = CrossAttnWrapper(torch.nn.Identity(), {}, 0)
         self.assertIsNone(w.original_module)
 
+    def test_q_reuse_off_by_default(self):
+        # Live A/B showed the fp16 kernel difference shifts same-seed
+        # renders, so Q reuse must never engage without artist_q_reuse.
+        torch.manual_seed(3)
+        stub = _StubAnimaAttention()
+        state = {}
+        w = CrossAttnWrapper(stub.forward, state, 0, original_module=stub)
+        x = torch.randn(1, 3, 8)
+        ctx = torch.randn(1, 4, 8)
+        artists = [torch.randn(1, 4, 8) for _ in range(2)]
+
+        outs = w._collect_artist_outputs(x, ctx, None, {}, artists, "interpolate")
+
+        expected = [stub(x, a) for a in artists]
+        for got, want in zip(outs, expected):
+            self.assertTrue(torch.allclose(got, want, atol=1e-5))
+        self.assertNotIn("_q_reuse_validation", state)
+
     def test_batched_matches_sequential_with_q_reuse(self):
         torch.manual_seed(0)
         stub = _StubAnimaAttention()
-        state = {}
+        state = {"artist_q_reuse": True}
         w = CrossAttnWrapper(stub.forward, state, 0, original_module=stub)
         x = torch.randn(2, 3, 8)
         ctx = torch.randn(2, 4, 8)
@@ -167,7 +185,7 @@ class QReuseBatchingTests(unittest.TestCase):
     def test_q_reuse_stays_active_on_later_calls(self):
         torch.manual_seed(1)
         stub = _StubAnimaAttention()
-        state = {}
+        state = {"artist_q_reuse": True}
         w = CrossAttnWrapper(stub.forward, state, 0, original_module=stub)
         x = torch.randn(1, 3, 8)
         ctx = torch.randn(1, 4, 8)
@@ -181,7 +199,7 @@ class QReuseBatchingTests(unittest.TestCase):
 
     def test_module_without_internals_uses_standard_path(self):
         counting = _CountingAttn()
-        state = {}
+        state = {"artist_q_reuse": True}
         w = CrossAttnWrapper(counting.forward, state, 0, original_module=counting)
         x = torch.zeros(1, 2, 4)
         ctx = torch.full((1, 3, 4), 3.0)
@@ -196,7 +214,7 @@ class QReuseBatchingTests(unittest.TestCase):
     def test_concat_fusion_batches_with_q_reuse(self):
         torch.manual_seed(2)
         stub = _StubAnimaAttention()
-        state = {}
+        state = {"artist_q_reuse": True}
         w = CrossAttnWrapper(stub.forward, state, 0, original_module=stub)
         x = torch.randn(1, 3, 8)
         ctx = torch.randn(1, 4, 8)

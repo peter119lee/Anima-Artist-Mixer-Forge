@@ -12,11 +12,15 @@ top; this release brings them back with attribution.
   free VRAM can hold instead of running unbounded — an OOM used to
   disable batching for the whole run. A manual 1-8 value still forces
   a fixed cap.
-- **Q-projection reuse**: Anima's cross-attention never applies rope
-  to Q/K, so Q is projected once per step and reused across every
-  artist's K/V. Guarded by a first-use numeric validation against the
-  standard attention path (logged either way) and falls back cleanly
-  on any mismatch or unexpected module structure.
+- **Q-projection reuse** (`artist_q_reuse`, opt-in, default OFF):
+  Anima's cross-attention never applies rope to Q/K, so Q can be
+  projected once per step and reused across every artist's K/V,
+  guarded by a first-use numeric validation against the standard path.
+  It stays off by default on live A/B evidence: the fp16 kernel
+  difference passes the validation tolerance but compounds over 32
+  steps into ~17% shifted pixels on same-seed balanced renders, and
+  the fast path bypasses TeaCache-style attention patches. Enable it
+  only when reproducibility against previous renders does not matter.
 - **`AnimaArtistStyleBalance` compat node**: upstream 26.x workflows
   using its one-dial style balance now load in the forge; the dial
   maps onto the forge's existing `contribution_balance` controller
