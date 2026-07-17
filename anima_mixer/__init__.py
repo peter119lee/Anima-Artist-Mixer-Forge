@@ -28,6 +28,7 @@ from .nodes_ui import (
     AnimaArtistRecipeSave,
     AnimaArtistSimpleOptions,
     AnimaArtistStarter,
+    AnimaArtistStyleBalance,
 )
 
 NODE_CLASS_MAPPINGS = {
@@ -40,6 +41,7 @@ NODE_CLASS_MAPPINGS = {
     "AnimaArtistPresetApply": AnimaArtistPresetApply,
     "AnimaArtistCrossAttn": AnimaArtistCrossAttn,
     "AnimaArtistOptions": AnimaArtistOptions,
+    "AnimaArtistStyleBalance": AnimaArtistStyleBalance,
     "AnimaArtistPreset": AnimaArtistPreset,
     "AnimaArtistInspector": AnimaArtistInspector,
     "AnimaArtistRecipeSave": AnimaArtistRecipeSave,
@@ -61,6 +63,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AnimaArtistPresetApply": "Anima Artist Apply Preset",
     "AnimaArtistCrossAttn": "Anima Artist Cross-Attn (Manual/Advanced)",
     "AnimaArtistOptions": "Anima Artist Options (Expert)",
+    "AnimaArtistStyleBalance": "Anima Artist Style Balance",
     "AnimaArtistPreset": "Anima Artist Preset (Advanced)",
     "AnimaArtistInspector": "Anima Artist Inspector",
     "AnimaArtistRecipeSave": "Anima Artist Recipe (Save)",

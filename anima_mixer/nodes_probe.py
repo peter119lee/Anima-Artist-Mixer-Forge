@@ -1,6 +1,5 @@
 """Probe nodes: per-artist/per-layer influence measurement and report."""
 
-
 import logging
 import uuid
 
@@ -43,6 +42,9 @@ def _registry_store(probe_id, state):
         "probe_num_blocks": state["probe_num_blocks"],
         "_probe_seen_sigmas": state["_probe_seen_sigmas"],
         "probe_step_stats": state.get("probe_step_stats"),
+        # Lets the report skip the dominance tip when the run already
+        # had the contribution balancer on.
+        "contribution_balance": bool(state.get("contribution_balance", False)),
     }
     while len(PROBE_REGISTRY) > _PROBE_REGISTRY_LIMIT:
         PROBE_REGISTRY.pop(next(iter(PROBE_REGISTRY)))
@@ -64,13 +66,19 @@ class AnimaArtistProbe:
             "required": {
                 "model": ("MODEL",),
                 "artist_pack": ("ANIMA_PACK",),
-                "probe_steps": ("INT", {
-                    "default": 6, "min": 1, "max": 24, "step": 1,
-                    "tooltip": (
-                        "Number of sampling steps to measure. Early steps carry "
-                        "the most style signal; 4-8 is usually enough."
-                    ),
-                }),
+                "probe_steps": (
+                    "INT",
+                    {
+                        "default": 6,
+                        "min": 1,
+                        "max": 24,
+                        "step": 1,
+                        "tooltip": (
+                            "Number of sampling steps to measure. Early steps carry "
+                            "the most style signal; 4-8 is usually enough."
+                        ),
+                    },
+                ),
             },
         }
 
@@ -87,9 +95,7 @@ class AnimaArtistProbe:
             )
         base_cond_out = artist_pack.get("base_conditioning")
         if base_cond_out is None:
-            raise ValueError(
-                "[AnimaArtistProbe] artist_pack is missing base_conditioning."
-            )
+            raise ValueError("[AnimaArtistProbe] artist_pack is missing base_conditioning.")
         conditionings = artist_pack.get("conditionings") or []
         labels = list(artist_pack.get("labels") or [])
         if not conditionings:
@@ -100,9 +106,7 @@ class AnimaArtistProbe:
             raw, ids, w = extract_conditioning(c)
             if raw is None:
                 label = labels[idx] if idx < len(labels) else f"#{idx}"
-                raise ValueError(
-                    f"[AnimaArtistProbe] artist[{label}] conditioning is empty."
-                )
+                raise ValueError(f"[AnimaArtistProbe] artist[{label}] conditioning is empty.")
             raws.append(raw)
             ids_list.append(ids)
             w_list.append(w)
@@ -116,24 +120,36 @@ class AnimaArtistProbe:
         if not ok:
             raise ValueError(f"[AnimaArtistProbe] unsupported model: {msg}")
         if not hasattr(dm, "preprocess_text_embeds"):
-            raise ValueError(
-                "[AnimaArtistProbe] this is not an Anima model "
-                "(missing preprocess_text_embeds)"
-            )
+            raise ValueError("[AnimaArtistProbe] this is not an Anima model (missing preprocess_text_embeds)")
 
         probe_id = uuid.uuid4().hex[:12]
         n = len(raws)
 
         state = _build_runtime_state(
-            True, FUSION_INTERPOLATE, COMBINE_OUTPUT_AVG, 1.0, False,
-            raws, ids_list, w_list, [1.0] * n, labels,
-            [None] * n, False, [None] * n, False,
-            True, False, None,
+            True,
+            FUSION_INTERPOLATE,
+            COMBINE_OUTPUT_AVG,
+            1.0,
+            False,
+            raws,
+            ids_list,
+            w_list,
+            [1.0] * n,
+            labels,
+            [None] * n,
+            False,
+            [None] * n,
+            False,
+            True,
+            False,
+            None,
             {"static_capture_k": STATIC_CAPTURE_K_DEFAULT},
-            dm, None, [],
+            dm,
+            None,
+            [],
         )
         state["probe_steps"] = max(1, int(probe_steps))
-        state["probe_stats"] = {}      # layer_idx -> [ [sum, count], ... ] per artist
+        state["probe_stats"] = {}  # layer_idx -> [ [sum, count], ... ] per artist
         state["probe_step_stats"] = {}  # sigma_key -> [ [sum, count], ... ] per artist
         state["probe_labels"] = labels
         state["probe_num_blocks"] = num_blocks
@@ -155,8 +171,11 @@ class AnimaArtistProbe:
 
         _registry_store(probe_id, state)
         logger.info(
-            "[AnimaArtistProbe] probe %s armed for %d artists x %d layers "
-            "(first %d steps)", probe_id, n, num_blocks, state["probe_steps"],
+            "[AnimaArtistProbe] probe %s armed for %d artists x %d layers (first %d steps)",
+            probe_id,
+            n,
+            num_blocks,
+            state["probe_steps"],
         )
         return (m, base_cond_out, probe_id)
 
@@ -166,8 +185,7 @@ class _ProbeCrossAttnWrapper(CrossAttnWrapper):
 
     def _dispatch(self, x, context, rope_emb, transformer_options):
         st = self._st
-        base_out = self.original(x, context, rope_emb=rope_emb,
-                                 transformer_options=transformer_options)
+        base_out = self.original(x, context, rope_emb=rope_emb, transformer_options=transformer_options)
 
         stats = st.setdefault("probe_stats", {})
         layer_stats = stats.get(self._idx)
@@ -198,14 +216,18 @@ class _ProbeCrossAttnWrapper(CrossAttnWrapper):
         # Restrict the delta measurement to the cond rows: under CFG the uncond
         # rows carry the unstyled trajectory and would understate influence.
         from .patching import build_artists, resolve_mask
-        cou = transformer_options.get("cond_or_uncond") \
-            if isinstance(transformer_options, dict) else None
+
+        cou = transformer_options.get("cond_or_uncond") if isinstance(transformer_options, dict) else None
         mask = resolve_mask(cou, context.shape[0], False, {})
         row_mask = torch.tensor(mask, device=base_out.device, dtype=torch.bool)
 
         individuals, _ = build_artists(st, context)
         outs = self._collect_artist_outputs(
-            x, context, rope_emb, transformer_options, individuals,
+            x,
+            context,
+            rope_emb,
+            transformer_options,
+            individuals,
             FUSION_INTERPOLATE,
         )
         base_sel = base_out.detach().to(torch.float32)[row_mask]
@@ -252,12 +274,15 @@ class AnimaArtistProbeReport:
                 "probe_id": ("STRING", {"default": "", "forceInput": True}),
             },
             "optional": {
-                "trigger": (ANY_TYPE, {
-                    "tooltip": (
-                        "Connect any post-sampler output (e.g. the decoded IMAGE) "
-                        "so this report runs after sampling finished."
-                    ),
-                }),
+                "trigger": (
+                    ANY_TYPE,
+                    {
+                        "tooltip": (
+                            "Connect any post-sampler output (e.g. the decoded IMAGE) "
+                            "so this report runs after sampling finished."
+                        ),
+                    },
+                ),
             },
         }
 
@@ -321,26 +346,30 @@ class AnimaArtistProbeReport:
                 f"  {label}: {shares[i] * 100:.1f}% "
                 f"({shares[i] * n:.2f}x equal split) — {share_verdict(shares[i], n)}"
             )
+        has_dominant = any(share_verdict(s, n) == "dominant" for s in shares)
+        if has_dominant and not state.get("contribution_balance", False):
+            lines.append(
+                "  tip: enable contribution_balance (Options node) or add the "
+                "Style Balance node to even artist strength before weighting"
+            )
         curve_lines = render_step_curves(state.get("probe_step_stats"), labels)
         if curve_lines:
             lines.append("")
             lines.extend(curve_lines)
-        lines.extend([
-            "",
-            "relative style influence per layer "
-            "(||artist_out - base_out|| / ||base_out||):",
-        ])
+        lines.extend(
+            [
+                "",
+                "relative style influence per layer (||artist_out - base_out|| / ||base_out||):",
+            ]
+        )
         for i, label in enumerate(labels):
             row = scores[i]
             peak = max(row) if row else 0.0
             lines.append("")
-            lines.append(
-                f"artist {i + 1}: {label} "
-                f"(peak {peak:.3f}, {sample_counts[i]} samples)"
-            )
+            lines.append(f"artist {i + 1}: {label} (peak {peak:.3f}, {sample_counts[i]} samples)")
             # Compact bar chart, 8 layers per line.
             for start in range(0, num_blocks, 8):
-                seg = row[start:start + 8]
+                seg = row[start : start + 8]
                 cells = []
                 for j, v in enumerate(seg):
                     bar_len = 0 if peak <= 0 else int(round(6 * v / peak))
@@ -353,12 +382,14 @@ class AnimaArtistProbeReport:
                     f"  suggested route: {label}@{lo}-{hi}  "
                     f"({format_layer_span(lo, hi)} carries the strongest signal)"
                 )
-        lines.extend([
-            "",
-            "how to use:",
-            "  - copy the suggested @routes into your artist chain",
-            "  - artists with flat profiles mix well at all layers",
-            "  - artists with sharp peaks benefit most from layer routing",
-        ])
+        lines.extend(
+            [
+                "",
+                "how to use:",
+                "  - copy the suggested @routes into your artist chain",
+                "  - artists with flat profiles mix well at all layers",
+                "  - artists with sharp peaks benefit most from layer routing",
+            ]
+        )
         text = "\n".join(lines)
         return {"ui": {"text": [text]}, "result": (text,)}

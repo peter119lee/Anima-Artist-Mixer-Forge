@@ -1,5 +1,32 @@
 # Changelog
 
+## v27.5.0 (2026-07-17)
+
+Performance and compat ports from upstream An1X3R/Anima-Artist-Mixer
+26.x (MIT) — upstream absorbed this project's v26 line into its main
+(commits 9a9880f–0fb5079) and built two genuinely new refinements on
+top; this release brings them back with attribution.
+
+- **VRAM-aware artist batching**: with `max_batch_artists = 0` (the
+  default) the batched multi-artist forward now auto-chunks to what
+  free VRAM can hold instead of running unbounded — an OOM used to
+  disable batching for the whole run. A manual 1-8 value still forces
+  a fixed cap.
+- **Q-projection reuse**: Anima's cross-attention never applies rope
+  to Q/K, so Q is projected once per step and reused across every
+  artist's K/V. Guarded by a first-use numeric validation against the
+  standard attention path (logged either way) and falls back cleanly
+  on any mismatch or unexpected module structure.
+- **`AnimaArtistStyleBalance` compat node**: upstream 26.x workflows
+  using its one-dial style balance now load in the forge; the dial
+  maps onto the forge's existing `contribution_balance` controller
+  (same goal, row-masked and weight-aware math). At 0.0 it is a pure
+  passthrough.
+- The Probe Report now appends a tip when an artist's contribution
+  verdict is "dominant" and the balancer is off.
+- Upstream PR #4 was closed: its content now lives in upstream main
+  and development continues here.
+
 ## v27.4.1 (2026-07-05)
 
 Onboarding: you can now get a first image without reading any docs.

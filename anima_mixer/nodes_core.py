@@ -91,12 +91,29 @@ def _percent_window_to_sigma_route(ms, timing):
     return (lo, hi, fade_in_lo, fade_out_hi)
 
 
-def _build_runtime_state(enabled, fusion_mode, combine_mode, strength,
-                         apply_to_uncond, raws, ids_list, w_list, user_weights,
-                         labels, artist_layer_routes, has_artist_layer_routes,
-                         artist_timing_routes, has_artist_timing_routes,
-                         normalize_w, has_explicit_weights, preset_name,
-                         adv, dm, sigma_range, external_patches):
+def _build_runtime_state(
+    enabled,
+    fusion_mode,
+    combine_mode,
+    strength,
+    apply_to_uncond,
+    raws,
+    ids_list,
+    w_list,
+    user_weights,
+    labels,
+    artist_layer_routes,
+    has_artist_layer_routes,
+    artist_timing_routes,
+    has_artist_timing_routes,
+    normalize_w,
+    has_explicit_weights,
+    preset_name,
+    adv,
+    dm,
+    sigma_range,
+    external_patches,
+):
     return {
         "enabled": bool(enabled),
         "fusion_mode": fusion_mode,
@@ -141,9 +158,7 @@ def _build_runtime_state(enabled, fusion_mode, combine_mode, strength,
             adv.get("contribution_balance_alpha", CONTRIB_BALANCE_ALPHA_DEFAULT)
         ),
         "mixed_delta_cap": bool(adv.get("mixed_delta_cap", False)),
-        "mixed_delta_cap_ratio": float(
-            adv.get("mixed_delta_cap_ratio", MIXED_DELTA_CAP_RATIO_DEFAULT)
-        ),
+        "mixed_delta_cap_ratio": float(adv.get("mixed_delta_cap_ratio", MIXED_DELTA_CAP_RATIO_DEFAULT)),
         "individuals": None,
         "real_lens": None,
         "dm_ref": dm,
@@ -199,28 +214,37 @@ class AnimaArtistCrossAttn:
                         ),
                     },
                 ),
-                "strength": ("FLOAT", {
-                    "default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05,
-                    "tooltip": (
-                        "Artist injection strength.\n"
-                        "0.0-1.0: interpolation lerp(base, artist, strength)\n"
-                        "1.0-4.0: extrapolation base + strength * (artist - base)\n"
-                        "  Amplifies the artist's deviation; decoupled from artist count.\n"
-                        "  Recommended 1.5-2.5; above 3 tends to oversaturate."
-                    ),
-                }),
+                "strength": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.0,
+                        "max": 4.0,
+                        "step": 0.05,
+                        "tooltip": (
+                            "Artist injection strength.\n"
+                            "0.0-1.0: interpolation lerp(base, artist, strength)\n"
+                            "1.0-4.0: extrapolation base + strength * (artist - base)\n"
+                            "  Amplifies the artist's deviation; decoupled from artist count.\n"
+                            "  Recommended 1.5-2.5; above 3 tends to oversaturate."
+                        ),
+                    },
+                ),
                 "enabled": ("BOOLEAN", {"default": True}),
                 "apply_to_uncond": ("BOOLEAN", {"default": False}),
             },
             "optional": {
                 "advanced_options": ("ANIMA_OPTS",),
-                "preset": ("ANIMA_PRESET", {
-                    "tooltip": (
-                        "Compatibility input for older workflows. For preset "
-                        "workflows, prefer Anima Artist Apply Preset so the "
-                        "manual combine/fusion/strength widgets are not shown."
-                    ),
-                }),
+                "preset": (
+                    "ANIMA_PRESET",
+                    {
+                        "tooltip": (
+                            "Compatibility input for older workflows. For preset "
+                            "workflows, prefer Anima Artist Apply Preset so the "
+                            "manual combine/fusion/strength widgets are not shown."
+                        ),
+                    },
+                ),
             },
         }
 
@@ -229,15 +253,29 @@ class AnimaArtistCrossAttn:
     FUNCTION = "patch"
     CATEGORY = "Anima/Setup"
 
-    def patch(self, model, artist_pack, combine_mode, fusion_mode,
-              strength, enabled, apply_to_uncond, advanced_options=None, preset=None):
+    def patch(
+        self,
+        model,
+        artist_pack,
+        combine_mode,
+        fusion_mode,
+        strength,
+        enabled,
+        apply_to_uncond,
+        advanced_options=None,
+        preset=None,
+    ):
         base_prompt = ""
         artist_count = 0
         if isinstance(artist_pack, dict):
             base_prompt = str(artist_pack.get("base_prompt", "") or "")
             artist_count = len(artist_pack.get("labels") or [])
         combine_mode, fusion_mode, strength, adv, preset_name = merge_runtime_options(
-            combine_mode, fusion_mode, strength, advanced_options, preset,
+            combine_mode,
+            fusion_mode,
+            strength,
+            advanced_options,
+            preset,
             base_prompt=base_prompt,
             artist_count=artist_count,
         )
@@ -308,9 +346,7 @@ class AnimaArtistCrossAttn:
         artist_static_capture = bool(adv.get("artist_static_capture", False))
         static_capture_k = int(adv.get("static_capture_k", STATIC_CAPTURE_K_DEFAULT))
         adv["static_capture_k"] = max(1, min(static_capture_k, STATIC_CAPTURE_K_MAX))
-        static_blend_alpha = float(
-            adv.get("static_capture_blend_alpha", STATIC_CAPTURE_BLEND_ALPHA_DEFAULT)
-        )
+        static_blend_alpha = float(adv.get("static_capture_blend_alpha", STATIC_CAPTURE_BLEND_ALPHA_DEFAULT))
         adv["static_capture_blend_alpha"] = max(0.0, min(1.0, static_blend_alpha))
         artist_anchor_q = bool(adv.get("artist_anchor_q", False))
         anchor_seeds_count = int(adv.get("anchor_seeds_count", 1))
@@ -321,20 +357,18 @@ class AnimaArtistCrossAttn:
             adv.get("contribution_balance_alpha", CONTRIB_BALANCE_ALPHA_DEFAULT)
         )
         adv["contribution_balance_alpha"] = max(0.0, min(1.0, contribution_balance_alpha))
-        mixed_delta_cap_ratio = float(
-            adv.get("mixed_delta_cap_ratio", MIXED_DELTA_CAP_RATIO_DEFAULT)
-        )
-        adv["mixed_delta_cap_ratio"] = max(
-            0.0, min(MIXED_DELTA_CAP_RATIO_MAX, mixed_delta_cap_ratio)
-        )
+        mixed_delta_cap_ratio = float(adv.get("mixed_delta_cap_ratio", MIXED_DELTA_CAP_RATIO_DEFAULT))
+        adv["mixed_delta_cap_ratio"] = max(0.0, min(MIXED_DELTA_CAP_RATIO_MAX, mixed_delta_cap_ratio))
         stabilizer_end_percent = float(adv.get("stabilizer_end_percent", 1.0))
         adv["stabilizer_end_percent"] = max(0.0, min(1.0, stabilizer_end_percent))
 
         use_sigma_range = (start_percent > 0.0) or (end_percent < 1.0)
         use_stabilizer_window = adv["stabilizer_end_percent"] < 1.0
         need_sigma_capture = (
-            use_sigma_range or (artist_ema_alpha > 0.0)
-            or artist_static_capture or artist_anchor_q
+            use_sigma_range
+            or (artist_ema_alpha > 0.0)
+            or artist_static_capture
+            or artist_anchor_q
             or use_stabilizer_window
         )
 
@@ -375,8 +409,7 @@ class AnimaArtistCrossAttn:
             if raw is None:
                 label = labels[idx] if idx < len(labels) else f"#{idx}"
                 raise ValueError(
-                    f"[AnimaCrossAttn] artist[{label}] conditioning is empty. "
-                    "Do the CLIP and model match?"
+                    f"[AnimaCrossAttn] artist[{label}] conditioning is empty. Do the CLIP and model match?"
                 )
             raws.append(raw)
             ids_list.append(ids)
@@ -390,10 +423,7 @@ class AnimaArtistCrossAttn:
 
         if has_explicit_weights and normalize_w:
             normalize_w = False
-            logger.info(
-                "[AnimaCrossAttn] explicit ::weight detected; "
-                "normalize_weights is bypassed."
-            )
+            logger.info("[AnimaCrossAttn] explicit ::weight detected; normalize_weights is bypassed.")
 
         if any(w < 0.0 for w in user_weights):
             logger.info(
@@ -410,15 +440,18 @@ class AnimaArtistCrossAttn:
         if fusion_mode == FUSION_BASE_PRESERVE and float(strength) < 0.3:
             logger.info(
                 "[AnimaCrossAttn] fusion=base_preserve at strength=%.2f (<0.3) "
-                "is very subtle; consider strength >= 0.7.", float(strength),
+                "is very subtle; consider strength >= 0.7.",
+                float(strength),
             )
 
         if float(strength) > 1.0:
             logger.info(
                 "[AnimaCrossAttn] strength=%.2f > 1.0 enters extrapolation: "
                 "out = base + %.2f * (artist - base). %s.",
-                float(strength), float(strength),
-                "Recommended range 1.5-2.5" if float(strength) <= 3.0
+                float(strength),
+                float(strength),
+                "Recommended range 1.5-2.5"
+                if float(strength) <= 3.0
                 else "Current value is high and may oversaturate",
             )
 
@@ -440,7 +473,9 @@ class AnimaArtistCrossAttn:
                     "[AnimaCrossAttn] normalize_weights=False and effective weight "
                     "sum %.2f (artists=%d, combine=%s); the output may be too "
                     "strong. Lower ::weight values, enable normalize, or use concat.",
-                    effective_weight_sum, n, combine_mode,
+                    effective_weight_sum,
+                    n,
+                    combine_mode,
                 )
 
         try:
@@ -452,13 +487,11 @@ class AnimaArtistCrossAttn:
         if not ok:
             raise ValueError(f"[AnimaCrossAttn] unsupported model: {msg}")
         if not hasattr(dm, "preprocess_text_embeds"):
-            raise ValueError(
-                "[AnimaCrossAttn] this is not an Anima model "
-                "(missing preprocess_text_embeds)"
-            )
+            raise ValueError("[AnimaCrossAttn] this is not an Anima model (missing preprocess_text_embeds)")
 
         artist_layer_routes, has_artist_layer_routes = resolve_artist_layer_routes(
-            layer_route_texts, num_blocks,
+            layer_route_texts,
+            num_blocks,
         )
         if len(artist_layer_routes) < n:
             artist_layer_routes.extend([None] * (n - len(artist_layer_routes)))
@@ -493,8 +526,8 @@ class AnimaArtistCrossAttn:
                 sigma_range = (lo, hi)
             except Exception as e:
                 logger.warning(
-                    "[AnimaCrossAttn] failed to resolve the sigma range: %s. "
-                    "Step-range control is disabled.", e,
+                    "[AnimaCrossAttn] failed to resolve the sigma range: %s. Step-range control is disabled.",
+                    e,
                 )
                 sigma_range = None
 
@@ -502,9 +535,7 @@ class AnimaArtistCrossAttn:
         if use_stabilizer_window:
             try:
                 ms = model.get_model_object("model_sampling")
-                adv["stabilizer_min_sigma"] = float(
-                    ms.percent_to_sigma(adv["stabilizer_end_percent"])
-                )
+                adv["stabilizer_min_sigma"] = float(ms.percent_to_sigma(adv["stabilizer_end_percent"]))
             except Exception as e:
                 logger.warning(
                     "[AnimaCrossAttn] failed to resolve stabilizer_end_percent "
@@ -523,13 +554,12 @@ class AnimaArtistCrossAttn:
                     if timing is None:
                         artist_timing_routes.append(None)
                         continue
-                    artist_timing_routes.append(
-                        _percent_window_to_sigma_route(ms, timing)
-                    )
+                    artist_timing_routes.append(_percent_window_to_sigma_route(ms, timing))
             except Exception as e:
                 logger.warning(
                     "[AnimaCrossAttn] failed to resolve per-artist timing sigma "
-                    "ranges: %s. Timing routes are treated as always active.", e,
+                    "ranges: %s. Timing routes are treated as always active.",
+                    e,
                 )
                 artist_timing_routes = [None] * n
                 has_artist_timing_routes = False
@@ -539,12 +569,27 @@ class AnimaArtistCrossAttn:
         m = model.clone()
 
         state = _build_runtime_state(
-            enabled, fusion_mode, combine_mode, strength, apply_to_uncond,
-            raws, ids_list, w_list, user_weights, labels,
-            artist_layer_routes, has_artist_layer_routes,
-            artist_timing_routes, has_artist_timing_routes,
-            normalize_w, has_explicit_weights, preset_name,
-            adv, dm, sigma_range, external_patches,
+            enabled,
+            fusion_mode,
+            combine_mode,
+            strength,
+            apply_to_uncond,
+            raws,
+            ids_list,
+            w_list,
+            user_weights,
+            labels,
+            artist_layer_routes,
+            has_artist_layer_routes,
+            artist_timing_routes,
+            has_artist_timing_routes,
+            normalize_w,
+            has_explicit_weights,
+            preset_name,
+            adv,
+            dm,
+            sigma_range,
+            external_patches,
         )
 
         # The sigma-capture wrapper is always installed: it is the single
@@ -566,29 +611,35 @@ class AnimaArtistCrossAttn:
         # node wins on the overlap.
         existing_patches = getattr(m, "object_patches", None) or {}
         overlapped = [
-            i for i in target_blocks
-            if f"diffusion_model.blocks.{i}.cross_attn.forward" in existing_patches
+            i for i in target_blocks if f"diffusion_model.blocks.{i}.cross_attn.forward" in existing_patches
         ]
         if overlapped:
             logger.warning(
                 "[AnimaCrossAttn] another Anima Artist mixer node already patches "
                 "blocks %d-%d on this model; the later node wins on overlapping "
-                "blocks.", min(overlapped), max(overlapped),
+                "blocks.",
+                min(overlapped),
+                max(overlapped),
             )
 
         for i in target_blocks:
             ca = dm.blocks[i].cross_attn
-            current_forward = getattr(ca, 'forward', None)
+            current_forward = getattr(ca, "forward", None)
 
             # Check if already patched by this code (handles multiple sampler workflows)
-            if hasattr(current_forward, '_anima_artist_mixer_forward_patch'):
+            if hasattr(current_forward, "_anima_artist_mixer_forward_patch"):
                 # Already patched - unwrap to get the true original
                 inner = unwrap_cross_attn_forward(ca)
             else:
                 # Not yet patched - proceed normally
                 inner = unwrap_cross_attn_forward(unwrap_cross_attn(ca))
 
-            wrapper = CrossAttnWrapper(inner, state, i)
+            wrapper = CrossAttnWrapper(
+                inner,
+                state,
+                i,
+                original_module=unwrap_cross_attn(ca),
+            )
             m.add_object_patch(
                 f"diffusion_model.blocks.{i}.cross_attn.forward",
                 make_cross_attn_forward_patch(wrapper),
@@ -604,25 +655,34 @@ class AnimaArtistPresetApply:
             "required": {
                 "model": ("MODEL",),
                 "artist_pack": ("ANIMA_PACK",),
-                "preset": ("ANIMA_PRESET", {
-                    "tooltip": (
-                        "Preset payload from Anima Artist Preset, Starter, or "
-                        "Recipe Load. It owns combine/fusion/strength."
-                    ),
-                }),
+                "preset": (
+                    "ANIMA_PRESET",
+                    {
+                        "tooltip": (
+                            "Preset payload from Anima Artist Preset, Starter, or "
+                            "Recipe Load. It owns combine/fusion/strength."
+                        ),
+                    },
+                ),
                 "enabled": ("BOOLEAN", {"default": True}),
-                "apply_to_uncond": ("BOOLEAN", {
-                    "default": False,
-                    "tooltip": "Default False. Applying style to uncond usually breaks CFG.",
-                }),
+                "apply_to_uncond": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "tooltip": "Default False. Applying style to uncond usually breaks CFG.",
+                    },
+                ),
             },
             "optional": {
-                "advanced_options": ("ANIMA_OPTS", {
-                    "tooltip": (
-                        "Optional explicit option override. Leave disconnected "
-                        "when the preset alone is enough."
-                    ),
-                }),
+                "advanced_options": (
+                    "ANIMA_OPTS",
+                    {
+                        "tooltip": (
+                            "Optional explicit option override. Leave disconnected "
+                            "when the preset alone is enough."
+                        ),
+                    },
+                ),
             },
         }
 
@@ -631,8 +691,7 @@ class AnimaArtistPresetApply:
     FUNCTION = "apply"
     CATEGORY = "Anima/Setup"
 
-    def apply(self, model, artist_pack, preset, enabled, apply_to_uncond,
-              advanced_options=None):
+    def apply(self, model, artist_pack, preset, enabled, apply_to_uncond, advanced_options=None):
         return AnimaArtistCrossAttn().patch(
             model,
             artist_pack,

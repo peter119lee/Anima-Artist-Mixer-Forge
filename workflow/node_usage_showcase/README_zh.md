@@ -33,14 +33,14 @@ $server = "http://127.0.0.1:8188"
 | 文件 | 展示节点 | 用途 |
 |---|---|---|
 | `01_basic_recommended.json` | `AnimaArtistBasic` | 最简单的一节点推荐入口 |
-| `02_clean_preset_apply_with_inspector.json` | `AnimaArtistPack`, `AnimaArtistPreset`, `AnimaArtistSimpleOptions`, `AnimaArtistPresetApply`, `AnimaArtistInspector` | 标准 preset 路线；不会显示被 preset 覆盖的手动参数 |
+| `02_clean_preset_apply_with_inspector.json` | `AnimaArtistPack`, `AnimaArtistPreset`, `AnimaArtistSimpleOptions`, `AnimaArtistStyleBalance`, `AnimaArtistPresetApply`, `AnimaArtistInspector` | 标准 preset 路线；不会显示被 preset 覆盖的手动参数 |
 | `03_starter_guided_preset.json` | `AnimaArtistStarter`, `AnimaArtistPack`, `AnimaArtistPresetApply`, `AnimaArtistInspector` | 表格输入、多 artist、自动生成 guide 的入口 |
 | `04_chain_builder_preview_manual_crossattn.json` | `AnimaArtistChainBuilder`, `AnimaArtistChainPreview`, `AnimaArtistOptions`, `AnimaArtistCrossAttn`, `AnimaArtistInspector` | 手动高级路线；需要直接控制 `combine_mode` / `fusion_mode` / `strength` 时使用 |
 | `05_recipe_save_load_share.json` | `AnimaArtistPreset`, `AnimaArtistRecipeSave`, `AnimaArtistRecipeLoad`, `AnimaArtistPack`, `AnimaArtistPresetApply`, `AnimaArtistInspector` | 保存和载入可分享 recipe |
 | `06_probe_and_report.json` | `AnimaArtistPack`, `AnimaArtistProbe`, `AnimaArtistProbeReport` | 测量 artist 风格主要影响哪些层 |
 | `07_diagnostics_tagcheck_ab_impact.json` | `AnimaArtistTagCheck`, `AnimaArtistABVariants`, `AnimaArtistImpactMap` | 验证每个 artist 是否真的起作用：重复 tag 检测、同 seed A/B 变体系列、差异热图 |
 
-## 18 个节点的覆盖情况
+## 19 个节点的覆盖情况
 
 | 节点 | 出现位置 |
 |---|---|
@@ -49,6 +49,7 @@ $server = "http://127.0.0.1:8188"
 | `AnimaArtistChainBuilder` | `04_chain_builder_preview_manual_crossattn.json` |
 | `AnimaArtistChainPreview` | `04_chain_builder_preview_manual_crossattn.json` |
 | `AnimaArtistSimpleOptions` | `02_clean_preset_apply_with_inspector.json` |
+| `AnimaArtistStyleBalance` | `02_clean_preset_apply_with_inspector.json`（上游 26.x 相容节点，映射到 contribution_balance） |
 | `AnimaArtistPack` | `02`, `03`, `04`, `05`, `06` |
 | `AnimaArtistPresetApply` | `02`, `03`, `05` |
 | `AnimaArtistCrossAttn` | `04_chain_builder_preview_manual_crossattn.json` |

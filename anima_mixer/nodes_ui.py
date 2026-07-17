@@ -70,25 +70,31 @@ class AnimaArtistChainBuilder:
         }
         return {
             "required": {
-                "layout": (CHAIN_LAYOUT_CHOICES, {
-                    "default": CHAIN_LAYOUT_LAYER_SCHEDULED,
-                    "tooltip": (
-                        "manual: use the per-row layer/timing values\n"
-                        "even_layers: split DiT blocks evenly across artists\n"
-                        "layer_scheduled: early/mid/late layers + early/mid/late "
-                        "sampling windows in one click"
-                    ),
-                }),
-                "artist_table": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "tooltip": (
-                        "Multi-artist table. One per line: artist | weight | layers | timing.\n"
-                        "Example: @wlop | 1.2 | 0-8 | 0.0-0.45\n"
-                        "Empty layers/timing auto-fill per layout. Lines starting "
-                        "with # are ignored."
-                    ),
-                }),
+                "layout": (
+                    CHAIN_LAYOUT_CHOICES,
+                    {
+                        "default": CHAIN_LAYOUT_LAYER_SCHEDULED,
+                        "tooltip": (
+                            "manual: use the per-row layer/timing values\n"
+                            "even_layers: split DiT blocks evenly across artists\n"
+                            "layer_scheduled: early/mid/late layers + early/mid/late "
+                            "sampling windows in one click"
+                        ),
+                    },
+                ),
+                "artist_table": (
+                    "STRING",
+                    {
+                        "multiline": True,
+                        "default": "",
+                        "tooltip": (
+                            "Multi-artist table. One per line: artist | weight | layers | timing.\n"
+                            "Example: @wlop | 1.2 | 0-8 | 0.0-0.45\n"
+                            "Empty layers/timing auto-fill per layout. Lines starting "
+                            "with # are ignored."
+                        ),
+                    },
+                ),
                 "artist_1": ("STRING", artist_input),
                 "weight_1": ("FLOAT", {"default": 1.0, "min": WEIGHT_MIN, "max": WEIGHT_MAX, "step": 0.05}),
                 "artist_2": ("STRING", artist_input),
@@ -103,10 +109,16 @@ class AnimaArtistChainBuilder:
                 "timing_route_2": ("STRING", timing_input),
                 "layer_route_3": ("STRING", layer_input),
                 "timing_route_3": ("STRING", timing_input),
-                "num_blocks": ("INT", {
-                    "default": DEFAULT_NUM_BLOCKS, "min": 1, "max": 64, "step": 1,
-                    "tooltip": "Block count for the preview. Anima default is 28.",
-                }),
+                "num_blocks": (
+                    "INT",
+                    {
+                        "default": DEFAULT_NUM_BLOCKS,
+                        "min": 1,
+                        "max": 64,
+                        "step": 1,
+                        "tooltip": "Block count for the preview. Anima default is 28.",
+                    },
+                ),
             },
         }
 
@@ -116,11 +128,27 @@ class AnimaArtistChainBuilder:
     CATEGORY = "Anima/Setup"
     OUTPUT_NODE = True
 
-    def build(self, layout, artist_table, artist_1, weight_1, artist_2, weight_2, artist_3, weight_3,
-              layer_route_1="", timing_route_1="", layer_route_2="", timing_route_2="",
-              layer_route_3="", timing_route_3="", num_blocks=DEFAULT_NUM_BLOCKS):
+    def build(
+        self,
+        layout,
+        artist_table,
+        artist_1,
+        weight_1,
+        artist_2,
+        weight_2,
+        artist_3,
+        weight_3,
+        layer_route_1="",
+        timing_route_1="",
+        layer_route_2="",
+        timing_route_2="",
+        layer_route_3="",
+        timing_route_3="",
+        num_blocks=DEFAULT_NUM_BLOCKS,
+    ):
         table_rows, table_warnings = parse_builder_artist_table(
-            artist_table, return_warnings=True,
+            artist_table,
+            return_warnings=True,
         )
         rows = [
             (artist_1, weight_1, layer_route_1, timing_route_1),
@@ -129,7 +157,10 @@ class AnimaArtistChainBuilder:
         ]
         rows.extend(table_rows)
         chain, report = build_artist_chain_from_rows(
-            layout, rows, int(num_blocks), extra_warnings=table_warnings,
+            layout,
+            rows,
+            int(num_blocks),
+            extra_warnings=table_warnings,
         )
         return {"ui": {"text": [report]}, "result": (chain, report)}
 
@@ -139,21 +170,30 @@ class AnimaArtistChainPreview:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "artist_chain": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "tooltip": (
-                        "artist_chain to validate. This node needs no CLIP/model; "
-                        "use it to check ::weight, @layers, %timing and ~fade "
-                        "before paying the CLIP encoding cost."
-                    ),
-                }),
+                "artist_chain": (
+                    "STRING",
+                    {
+                        "multiline": True,
+                        "default": "",
+                        "tooltip": (
+                            "artist_chain to validate. This node needs no CLIP/model; "
+                            "use it to check ::weight, @layers, %timing and ~fade "
+                            "before paying the CLIP encoding cost."
+                        ),
+                    },
+                ),
             },
             "optional": {
-                "num_blocks": ("INT", {
-                    "default": DEFAULT_NUM_BLOCKS, "min": 1, "max": 64, "step": 1,
-                    "tooltip": "Block count for the preview. Anima default is 28.",
-                }),
+                "num_blocks": (
+                    "INT",
+                    {
+                        "default": DEFAULT_NUM_BLOCKS,
+                        "min": 1,
+                        "max": 64,
+                        "step": 1,
+                        "tooltip": "Block count for the preview. Anima default is 28.",
+                    },
+                ),
             },
         }
 
@@ -176,57 +216,75 @@ class AnimaArtistPreset:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "preset": (PRESET_CHOICES, {
-                    "default": PRESET_BALANCED,
-                    "tooltip": (
-                        "Advanced one-knob working modes.\n"
-                        "prompt_passthrough: direct prompt/no mixer, preserves positive prompt weights\n"
-                        "balanced: original-style output_avg + interpolate\n"
-                        "strong_style: stronger style, strength extrapolated to 1.65\n"
-                        "stable_seed: delta-capped output_avg, auto layers 9-20, content-safer seed stability\n"
-                        "drift_auto: runtime route from base_prompt and artist count; "
-                        "4+ broad prompts stay on drift_soft instead of compatibility concat\n"
-                        "drift_soft: softer EMA output_avg for portrait / broad-subject prompts\n"
-                        "face_lock: base_preserve + token norm lock for close-up faces\n"
-                        "scene_lock: base_preserve + light EMA for wide / background-heavy scenes\n"
-                        "anchor_lock: single-anchor Q with user blend, strength 0.9, auto layers 9-15\n"
-                        "fast_preview: concat path, speed first, good for hunting\n"
-                        "identity_guard: base_preserve + norm/delta guard, protects identity/composition\n"
-                        "compatibility_safe: concat + concat_with_base, plays nice with "
-                        "regional/Forge-style nodes"
-                    ),
-                }),
-                "intensity": ("FLOAT", {
-                    "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
-                    "tooltip": (
-                        "Preset strength multiplier. fast_preview and "
-                        "compatibility_safe ignore it; other presets multiply it "
-                        "into strength."
-                    ),
-                }),
-                "normalize_weights": ("BOOLEAN", {
-                    "default": True,
-                    "tooltip": (
-                        "Default normalize_weights inside the preset. ::weight in "
-                        "the chain still bypasses it at runtime."
-                    ),
-                }),
-                "layer_mode": (LAYER_MODE_CHOICES, {
-                    "default": LAYER_MODE_AUTO,
-                    "tooltip": (
-                        "Layer-range shortcut.\n"
-                        "auto: preset-specific default\n"
-                        "all_layers: every layer\n"
-                        "style_core: 0-18, overall style\n"
-                        "detail_layers: 12-63, details and strokes\n"
-                        "custom: use custom_layer_filter"
-                    ),
-                }),
-                "custom_layer_filter": ("STRING", {
-                    "default": "",
-                    "multiline": False,
-                    "tooltip": "Active when layer_mode=custom. Example: 0,3,5-10,-1",
-                }),
+                "preset": (
+                    PRESET_CHOICES,
+                    {
+                        "default": PRESET_BALANCED,
+                        "tooltip": (
+                            "Advanced one-knob working modes.\n"
+                            "prompt_passthrough: direct prompt/no mixer, preserves positive prompt weights\n"
+                            "balanced: original-style output_avg + interpolate\n"
+                            "strong_style: stronger style, strength extrapolated to 1.65\n"
+                            "stable_seed: delta-capped output_avg, auto layers 9-20, content-safer seed stability\n"
+                            "drift_auto: runtime route from base_prompt and artist count; "
+                            "4+ broad prompts stay on drift_soft instead of compatibility concat\n"
+                            "drift_soft: softer EMA output_avg for portrait / broad-subject prompts\n"
+                            "face_lock: base_preserve + token norm lock for close-up faces\n"
+                            "scene_lock: base_preserve + light EMA for wide / background-heavy scenes\n"
+                            "anchor_lock: single-anchor Q with user blend, strength 0.9, auto layers 9-15\n"
+                            "fast_preview: concat path, speed first, good for hunting\n"
+                            "identity_guard: base_preserve + norm/delta guard, protects identity/composition\n"
+                            "compatibility_safe: concat + concat_with_base, plays nice with "
+                            "regional/Forge-style nodes"
+                        ),
+                    },
+                ),
+                "intensity": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.0,
+                        "max": 2.0,
+                        "step": 0.05,
+                        "tooltip": (
+                            "Preset strength multiplier. fast_preview and "
+                            "compatibility_safe ignore it; other presets multiply it "
+                            "into strength."
+                        ),
+                    },
+                ),
+                "normalize_weights": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": (
+                            "Default normalize_weights inside the preset. ::weight in "
+                            "the chain still bypasses it at runtime."
+                        ),
+                    },
+                ),
+                "layer_mode": (
+                    LAYER_MODE_CHOICES,
+                    {
+                        "default": LAYER_MODE_AUTO,
+                        "tooltip": (
+                            "Layer-range shortcut.\n"
+                            "auto: preset-specific default\n"
+                            "all_layers: every layer\n"
+                            "style_core: 0-18, overall style\n"
+                            "detail_layers: 12-63, details and strokes\n"
+                            "custom: use custom_layer_filter"
+                        ),
+                    },
+                ),
+                "custom_layer_filter": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "tooltip": "Active when layer_mode=custom. Example: 0,3,5-10,-1",
+                    },
+                ),
             },
         }
 
@@ -237,36 +295,44 @@ class AnimaArtistPreset:
 
     def build(self, preset, intensity, normalize_weights, layer_mode, custom_layer_filter):
         payload = build_preset_payload(
-            preset, intensity, layer_mode, custom_layer_filter, normalize_weights,
+            preset,
+            intensity,
+            layer_mode,
+            custom_layer_filter,
+            normalize_weights,
         )
         adv = payload["advanced_options"]
-        summary = "\n".join([
-            f"Preset: {payload['preset']}",
-            f"combine_mode: {payload['combine_mode']}",
-            f"fusion_mode: {payload['fusion_mode']}",
-            f"strength: {payload['strength']:.2f}",
-            f"normalize_weights: {format_bool(adv.get('normalize_weights', True))}",
-            f"EMA alpha: {float(adv.get('artist_ema_alpha', 0.0)):.2f}",
-            f"lowrank_k: {int(adv.get('lowrank_k', 1))}",
-            f"static_capture: {format_bool(adv.get('artist_static_capture', False))}",
-            f"static_capture_k: {int(adv.get('static_capture_k', STATIC_CAPTURE_K_DEFAULT))}",
-            f"static_capture_mode: {adv.get('static_capture_mode', STATIC_CAPTURE_MODE_OUTPUT)}",
-            f"static_capture_blend_alpha: {float(adv.get('static_capture_blend_alpha', STATIC_CAPTURE_BLEND_ALPHA_DEFAULT)):.2f}",
-            f"match_base_norm: {format_bool(adv.get('match_base_norm', False))}",
-            f"norm_lock_mode: {adv.get('norm_lock_mode', NORM_LOCK_TOKEN)}",
-            f"norm_lock_scope: {adv.get('norm_lock_scope', NORM_LOCK_SCOPE_PER_ARTIST)}",
-            f"mixed_delta_cap: {format_bool(adv.get('mixed_delta_cap', False))}",
-            f"mixed_delta_cap_ratio: {float(adv.get('mixed_delta_cap_ratio', MIXED_DELTA_CAP_RATIO_DEFAULT)):.2f}",
-            f"compatibility_mode: {format_bool(adv.get('compatibility_mode', False))}",
-            f"layer_filter: {adv.get('layer_filter') or 'all'}",
-        ])
+        summary = "\n".join(
+            [
+                f"Preset: {payload['preset']}",
+                f"combine_mode: {payload['combine_mode']}",
+                f"fusion_mode: {payload['fusion_mode']}",
+                f"strength: {payload['strength']:.2f}",
+                f"normalize_weights: {format_bool(adv.get('normalize_weights', True))}",
+                f"EMA alpha: {float(adv.get('artist_ema_alpha', 0.0)):.2f}",
+                f"lowrank_k: {int(adv.get('lowrank_k', 1))}",
+                f"static_capture: {format_bool(adv.get('artist_static_capture', False))}",
+                f"static_capture_k: {int(adv.get('static_capture_k', STATIC_CAPTURE_K_DEFAULT))}",
+                f"static_capture_mode: {adv.get('static_capture_mode', STATIC_CAPTURE_MODE_OUTPUT)}",
+                f"static_capture_blend_alpha: {float(adv.get('static_capture_blend_alpha', STATIC_CAPTURE_BLEND_ALPHA_DEFAULT)):.2f}",
+                f"match_base_norm: {format_bool(adv.get('match_base_norm', False))}",
+                f"norm_lock_mode: {adv.get('norm_lock_mode', NORM_LOCK_TOKEN)}",
+                f"norm_lock_scope: {adv.get('norm_lock_scope', NORM_LOCK_SCOPE_PER_ARTIST)}",
+                f"mixed_delta_cap: {format_bool(adv.get('mixed_delta_cap', False))}",
+                f"mixed_delta_cap_ratio: {float(adv.get('mixed_delta_cap_ratio', MIXED_DELTA_CAP_RATIO_DEFAULT)):.2f}",
+                f"compatibility_mode: {format_bool(adv.get('compatibility_mode', False))}",
+                f"layer_filter: {adv.get('layer_filter') or 'all'}",
+            ]
+        )
         if payload["preset"] == PRESET_DRIFT_AUTO:
-            summary += "\n" + "\n".join([
-                "drift_auto: resolves at runtime from AnimaArtistPack.base_prompt and artist count",
-                "preview ignores base_prompt; use Inspector for the runtime route",
-                f"preview_resolved_preset: {adv.get('drift_auto_resolved_preset')}",
-                f"preview_reason: {adv.get('drift_auto_reason')}",
-            ])
+            summary += "\n" + "\n".join(
+                [
+                    "drift_auto: resolves at runtime from AnimaArtistPack.base_prompt and artist count",
+                    "preview ignores base_prompt; use Inspector for the runtime route",
+                    f"preview_resolved_preset: {adv.get('drift_auto_resolved_preset')}",
+                    f"preview_reason: {adv.get('drift_auto_reason')}",
+                ]
+            )
         return {"ui": {"text": [summary]}, "result": (payload, adv, summary)}
 
 
@@ -275,65 +341,95 @@ class AnimaArtistStarter:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "recipe": (PRESET_RECOMMENDED_CHOICES, {
-                    "default": PRESET_BALANCED,
-                    "tooltip": (
-                        "Recommended modes only. Use Anima Artist Preset for "
-                        "advanced / compatibility modes.\n"
-                        "balanced: original-compatible default\n"
-                        "strong_style: stronger artist style\n"
-                        "drift_auto: automatic low-drift route\n"
-                        "prompt_passthrough: direct prompt/no mixer"
-                    ),
-                }),
-                "artist_table": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "tooltip": (
-                        "One artist per line: artist | weight | layers | timing.\n"
-                        "Just the artist name is fine; weight defaults to 1.0; "
-                        "empty layers/timing auto-fill per layout."
-                    ),
-                }),
-                "layout": (CHAIN_LAYOUT_CHOICES, {
-                    "default": CHAIN_LAYOUT_LAYER_SCHEDULED,
-                    "tooltip": (
-                        "manual: use the table's layers/timing as-is\n"
-                        "even_layers: split DiT blocks evenly across artists\n"
-                        "layer_scheduled: auto layers + sampling windows, "
-                        "recommended for new users"
-                    ),
-                }),
-                "intensity": ("FLOAT", {
-                    "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
-                    "tooltip": (
-                        "Recipe strength multiplier for balanced, strong_style, "
-                        "and drift_auto. prompt_passthrough ignores it "
-                        "(direct prompt, no mixer)."
-                    ),
-                }),
+                "recipe": (
+                    PRESET_RECOMMENDED_CHOICES,
+                    {
+                        "default": PRESET_BALANCED,
+                        "tooltip": (
+                            "Recommended modes only. Use Anima Artist Preset for "
+                            "advanced / compatibility modes.\n"
+                            "balanced: original-compatible default\n"
+                            "strong_style: stronger artist style\n"
+                            "drift_auto: automatic low-drift route\n"
+                            "prompt_passthrough: direct prompt/no mixer"
+                        ),
+                    },
+                ),
+                "artist_table": (
+                    "STRING",
+                    {
+                        "multiline": True,
+                        "default": "",
+                        "tooltip": (
+                            "One artist per line: artist | weight | layers | timing.\n"
+                            "Just the artist name is fine; weight defaults to 1.0; "
+                            "empty layers/timing auto-fill per layout."
+                        ),
+                    },
+                ),
+                "layout": (
+                    CHAIN_LAYOUT_CHOICES,
+                    {
+                        "default": CHAIN_LAYOUT_LAYER_SCHEDULED,
+                        "tooltip": (
+                            "manual: use the table's layers/timing as-is\n"
+                            "even_layers: split DiT blocks evenly across artists\n"
+                            "layer_scheduled: auto layers + sampling windows, "
+                            "recommended for new users"
+                        ),
+                    },
+                ),
+                "intensity": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.0,
+                        "max": 2.0,
+                        "step": 0.05,
+                        "tooltip": (
+                            "Recipe strength multiplier for balanced, strong_style, "
+                            "and drift_auto. prompt_passthrough ignores it "
+                            "(direct prompt, no mixer)."
+                        ),
+                    },
+                ),
             },
             "optional": {
-                "normalize_weights": ("BOOLEAN", {
-                    "default": True,
-                    "tooltip": (
-                        "Recommended on for multi-artist setups. ::weight in the "
-                        "table bypasses it at runtime."
-                    ),
-                }),
-                "layer_mode": (LAYER_MODE_CHOICES, {
-                    "default": LAYER_MODE_AUTO,
-                    "tooltip": "Global layer-range shortcut; usually keep auto.",
-                }),
-                "custom_layer_filter": ("STRING", {
-                    "default": "",
-                    "multiline": False,
-                    "tooltip": "Active when layer_mode=custom. Example: 0,3,5-10,-1",
-                }),
-                "num_blocks": ("INT", {
-                    "default": DEFAULT_NUM_BLOCKS, "min": 1, "max": 64, "step": 1,
-                    "tooltip": "Block count for the preview. Anima default is 28.",
-                }),
+                "normalize_weights": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": (
+                            "Recommended on for multi-artist setups. ::weight in the "
+                            "table bypasses it at runtime."
+                        ),
+                    },
+                ),
+                "layer_mode": (
+                    LAYER_MODE_CHOICES,
+                    {
+                        "default": LAYER_MODE_AUTO,
+                        "tooltip": "Global layer-range shortcut; usually keep auto.",
+                    },
+                ),
+                "custom_layer_filter": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "tooltip": "Active when layer_mode=custom. Example: 0,3,5-10,-1",
+                    },
+                ),
+                "num_blocks": (
+                    "INT",
+                    {
+                        "default": DEFAULT_NUM_BLOCKS,
+                        "min": 1,
+                        "max": 64,
+                        "step": 1,
+                        "tooltip": "Block count for the preview. Anima default is 28.",
+                    },
+                ),
             },
         }
 
@@ -343,18 +439,34 @@ class AnimaArtistStarter:
     CATEGORY = "Anima/Basic"
     OUTPUT_NODE = True
 
-    def build(self, recipe, artist_table, layout, intensity,
-              normalize_weights=True, layer_mode=LAYER_MODE_AUTO,
-              custom_layer_filter="", num_blocks=DEFAULT_NUM_BLOCKS):
+    def build(
+        self,
+        recipe,
+        artist_table,
+        layout,
+        intensity,
+        normalize_weights=True,
+        layer_mode=LAYER_MODE_AUTO,
+        custom_layer_filter="",
+        num_blocks=DEFAULT_NUM_BLOCKS,
+    ):
         rows, table_warnings = parse_builder_artist_table(
-            artist_table, return_warnings=True,
+            artist_table,
+            return_warnings=True,
         )
         chain, chain_report = build_artist_chain_from_rows(
-            layout, rows, int(num_blocks), extra_warnings=table_warnings,
+            layout,
+            rows,
+            int(num_blocks),
+            extra_warnings=table_warnings,
         )
         artist_count = len(split_artist_chain(chain))
         payload = build_preset_payload(
-            recipe, intensity, layer_mode, custom_layer_filter, normalize_weights,
+            recipe,
+            intensity,
+            layer_mode,
+            custom_layer_filter,
+            normalize_weights,
             artist_count=artist_count,
         )
         adv = payload["advanced_options"]
@@ -387,17 +499,21 @@ class AnimaArtistStarter:
             f"  layer_filter: {adv.get('layer_filter') or 'all'}",
         ]
         if payload["preset"] == PRESET_DRIFT_AUTO:
-            guide_lines.extend([
-                "  drift_auto: resolves at runtime from AnimaArtistPack.base_prompt and artist count",
-                "  preview ignores base_prompt; use Inspector for the runtime route",
-                f"  preview_resolved_preset: {adv.get('drift_auto_resolved_preset')}",
-                f"  preview_reason: {adv.get('drift_auto_reason')}",
-            ])
-        guide_lines.extend([
-            "",
-            "chain report:",
-            chain_report,
-        ])
+            guide_lines.extend(
+                [
+                    "  drift_auto: resolves at runtime from AnimaArtistPack.base_prompt and artist count",
+                    "  preview ignores base_prompt; use Inspector for the runtime route",
+                    f"  preview_resolved_preset: {adv.get('drift_auto_resolved_preset')}",
+                    f"  preview_reason: {adv.get('drift_auto_reason')}",
+                ]
+            )
+        guide_lines.extend(
+            [
+                "",
+                "chain report:",
+                chain_report,
+            ]
+        )
         guide = "\n".join(guide_lines)
         return {"ui": {"text": [guide]}, "result": (chain, payload, adv, guide)}
 
@@ -418,17 +534,26 @@ class AnimaArtistInspector:
                     FUSION_CHOICES,
                     {"default": FUSION_INTERPOLATE},
                 ),
-                "strength": ("FLOAT", {
-                    "default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05,
-                }),
+                "strength": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.0,
+                        "max": 4.0,
+                        "step": 0.05,
+                    },
+                ),
                 "advanced_options": ("ANIMA_OPTS",),
                 "preset": ("ANIMA_PRESET",),
-                "model": ("MODEL", {
-                    "tooltip": (
-                        "Optional. Connect the Anima model to read the real block "
-                        "count instead of assuming 28."
-                    ),
-                }),
+                "model": (
+                    "MODEL",
+                    {
+                        "tooltip": (
+                            "Optional. Connect the Anima model to read the real block "
+                            "count instead of assuming 28."
+                        ),
+                    },
+                ),
             },
         }
 
@@ -438,9 +563,16 @@ class AnimaArtistInspector:
     CATEGORY = "Anima/Diagnostics"
     OUTPUT_NODE = True
 
-    def inspect(self, artist_pack, combine_mode=COMBINE_OUTPUT_AVG,
-                fusion_mode=FUSION_INTERPOLATE, strength=1.0,
-                advanced_options=None, preset=None, model=None):
+    def inspect(
+        self,
+        artist_pack,
+        combine_mode=COMBINE_OUTPUT_AVG,
+        fusion_mode=FUSION_INTERPOLATE,
+        strength=1.0,
+        advanced_options=None,
+        preset=None,
+        model=None,
+    ):
         if not isinstance(artist_pack, dict):
             report = "Anima Artist Inspector\nERROR: artist_pack is not a valid ANIMA_PACK."
             return {"ui": {"text": [report]}, "result": (report,)}
@@ -460,7 +592,11 @@ class AnimaArtistInspector:
         base_prompt = str(artist_pack.get("base_prompt", "") or "")
 
         combine_mode, fusion_mode, strength, adv, preset_name = merge_runtime_options(
-            combine_mode, fusion_mode, strength, advanced_options, preset,
+            combine_mode,
+            fusion_mode,
+            strength,
+            advanced_options,
+            preset,
             base_prompt=base_prompt,
             artist_count=len(labels),
         )
@@ -473,6 +609,7 @@ class AnimaArtistInspector:
         if model is not None:
             try:
                 from .patching import validate_model
+
                 try:
                     dm = model.get_model_object("diffusion_model")
                 except Exception:
@@ -482,9 +619,7 @@ class AnimaArtistInspector:
                     inspector_blocks = real_blocks
                     blocks_source = f"read {real_blocks} blocks from the model"
             except Exception:
-                blocks_source = (
-                    f"failed to read the model; assumes {DEFAULT_NUM_BLOCKS} blocks"
-                )
+                blocks_source = f"failed to read the model; assumes {DEFAULT_NUM_BLOCKS} blocks"
 
         lines = [
             "Anima Artist Mixer Inspector",
@@ -527,7 +662,8 @@ class AnimaArtistInspector:
 
         if labels:
             for idx, (label, weight, route, timing) in enumerate(
-                zip(labels, weights, layer_routes, timing_routes), start=1,
+                zip(labels, weights, layer_routes, timing_routes),
+                start=1,
             ):
                 route_text = f" @ {route}" if route else ""
                 timing_text = f" % {timing}" if timing else ""
@@ -538,9 +674,15 @@ class AnimaArtistInspector:
         target_blocks = resolve_target_blocks_from_options(adv, inspector_blocks)
         lines.append("")
         lines.append(f"block map ({blocks_source}):")
-        lines.append(format_artist_block_map(
-            labels, layer_routes, timing_routes, inspector_blocks, target_blocks,
-        ))
+        lines.append(
+            format_artist_block_map(
+                labels,
+                layer_routes,
+                timing_routes,
+                inspector_blocks,
+                target_blocks,
+            )
+        )
 
         warnings = []
         notes = []
@@ -548,38 +690,25 @@ class AnimaArtistInspector:
             warnings.append("no artists; CrossAttn will return the base prompt untouched.")
         if has_explicit and requested_normalize:
             warnings.append(
-                "::weight detected; normalize_weights is bypassed at runtime "
-                "(this is the correct behavior)."
+                "::weight detected; normalize_weights is bypassed at runtime (this is the correct behavior)."
             )
         if not effective_normalize and weight_sum > 1.5:
-            warnings.append(
-                "linear weight sum > 1.5; the style may oversaturate or blow out."
-            )
+            warnings.append("linear weight sum > 1.5; the style may oversaturate or blow out.")
         if any(w < 0.0 for w in weights):
             notes.append(
                 "negative weights present: those artists subtract their style "
                 "direction (style subtraction); best combined with positive artists."
             )
-        if (
-            adv.get("artist_static_capture", False)
-            and adv.get("artist_anchor_q", False)
-        ):
+        if adv.get("artist_static_capture", False) and adv.get("artist_anchor_q", False):
             warnings.append(
-                "static_capture and anchor_q are mutually exclusive; CrossAttn "
-                "disables static_capture."
+                "static_capture and anchor_q are mutually exclusive; CrossAttn disables static_capture."
             )
         if fusion_mode == FUSION_CONCAT_WITH_BASE and adv.get("artist_anchor_q", False):
-            warnings.append(
-                "concat_with_base does not support anchor_q; CrossAttn disables anchor_q."
-            )
+            warnings.append("concat_with_base does not support anchor_q; CrossAttn disables anchor_q.")
         if fusion_mode == FUSION_CONCAT_WITH_BASE and adv.get("artist_static_capture", False):
-            warnings.append(
-                "concat_with_base does not support static_capture; the normal path is used."
-            )
+            warnings.append("concat_with_base does not support static_capture; the normal path is used.")
         if combine_mode == COMBINE_LOWRANK_AVG and len(labels) <= 1:
-            warnings.append(
-                "lowrank_avg is meaningless with one artist; output_avg is used instead."
-            )
+            warnings.append("lowrank_avg is meaningless with one artist; output_avg is used instead.")
         if any(str(route or "").strip() for route in layer_routes):
             warnings.append(
                 "per-artist layer routes active; layers with no matching artist "
@@ -624,5 +753,6 @@ class AnimaArtistInspector:
 # Backward-compatible re-exports (v27.4 module split).
 from .nodes_options import AnimaArtistOptions  # noqa: E402,F401
 from .nodes_options import AnimaArtistSimpleOptions  # noqa: E402,F401
+from .nodes_options import AnimaArtistStyleBalance  # noqa: E402,F401
 from .nodes_recipes import AnimaArtistRecipeLoad  # noqa: E402,F401
 from .nodes_recipes import AnimaArtistRecipeSave  # noqa: E402,F401

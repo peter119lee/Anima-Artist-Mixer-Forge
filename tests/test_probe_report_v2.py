@@ -45,11 +45,11 @@ class ContributionShareTests(unittest.TestCase):
 
 class ShareVerdictTests(unittest.TestCase):
     def test_bands_are_relative_to_equal_split(self):
-        self.assertEqual(share_verdict(0.75, 2), "dominant")      # 1.5x
-        self.assertEqual(share_verdict(0.5, 2), "balanced")       # 1.0x
-        self.assertEqual(share_verdict(0.2, 3), "balanced")       # 0.6x
-        self.assertEqual(share_verdict(0.1, 3), "weak")           # 0.3x
-        self.assertEqual(share_verdict(0.02, 3), "negligible")    # 0.06x
+        self.assertEqual(share_verdict(0.75, 2), "dominant")  # 1.5x
+        self.assertEqual(share_verdict(0.5, 2), "balanced")  # 1.0x
+        self.assertEqual(share_verdict(0.2, 3), "balanced")  # 0.6x
+        self.assertEqual(share_verdict(0.1, 3), "weak")  # 0.3x
+        self.assertEqual(share_verdict(0.02, 3), "negligible")  # 0.06x
 
     def test_degenerate_counts(self):
         self.assertEqual(share_verdict(1.0, 1), "balanced")
@@ -160,6 +160,7 @@ class CategoryReorgTests(unittest.TestCase):
         "AnimaArtistPresetApply": "Anima/Setup",
         "AnimaArtistSimpleOptions": "Anima/Setup",
         "AnimaArtistOptions": "Anima/Setup",
+        "AnimaArtistStyleBalance": "Anima/Setup",
         "AnimaArtistChainBuilder": "Anima/Setup",
         "AnimaArtistCrossAttn": "Anima/Setup",
         "AnimaArtistInspector": "Anima/Diagnostics",
@@ -178,9 +179,7 @@ class CategoryReorgTests(unittest.TestCase):
 
         self.assertEqual(set(self.EXPECTED), set(NODE_CLASS_MAPPINGS))
         for name, cls in NODE_CLASS_MAPPINGS.items():
-            self.assertEqual(
-                getattr(cls, "CATEGORY", None), self.EXPECTED[name], name
-            )
+            self.assertEqual(getattr(cls, "CATEGORY", None), self.EXPECTED[name], name)
 
 
 if __name__ == "__main__":

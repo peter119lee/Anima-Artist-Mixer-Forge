@@ -23,7 +23,10 @@
   "4": {
     "class_type": "AnimaArtistPack",
     "inputs": {
-      "clip": ["2", 0],
+      "clip": [
+        "2",
+        0
+      ],
       "artist_chain": "1.2::@yuchi \\(salmon-1000\\)::, 0.8::@uof::",
       "base_prompt": "recent, 1girl, solo, upper body portrait, white blouse, navy jacket, looking at viewer, simple background, clean linework, detailed eyes"
     }
@@ -52,28 +55,55 @@
   "7": {
     "class_type": "AnimaArtistPresetApply",
     "inputs": {
-      "model": ["1", 0],
-      "artist_pack": ["4", 0],
-      "preset": ["5", 0],
+      "model": [
+        "1",
+        0
+      ],
+      "artist_pack": [
+        "4",
+        0
+      ],
+      "preset": [
+        "5",
+        0
+      ],
       "enabled": true,
       "apply_to_uncond": false,
-      "advanced_options": ["6", 0]
+      "advanced_options": [
+        "14",
+        0
+      ]
     }
   },
   "8": {
     "class_type": "AnimaArtistInspector",
     "inputs": {
-      "artist_pack": ["4", 0],
-      "preset": ["5", 0],
-      "advanced_options": ["6", 0],
-      "model": ["1", 0]
+      "artist_pack": [
+        "4",
+        0
+      ],
+      "preset": [
+        "5",
+        0
+      ],
+      "advanced_options": [
+        "14",
+        0
+      ],
+      "model": [
+        "1",
+        0
+      ]
     }
   },
   "9": {
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "nsfw, nude, naked, bare chest, cleavage, nipples, cropped head, head out of frame, lowres, worst quality, bad anatomy",
-      "clip": ["2", 0]
+      "clip": [
+        "2",
+        0
+      ]
     }
   },
   "10": {
@@ -87,10 +117,22 @@
   "11": {
     "class_type": "KSampler",
     "inputs": {
-      "model": ["7", 0],
-      "positive": ["7", 1],
-      "negative": ["9", 0],
-      "latent_image": ["10", 0],
+      "model": [
+        "7",
+        0
+      ],
+      "positive": [
+        "7",
+        1
+      ],
+      "negative": [
+        "9",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ],
       "seed": 22002002,
       "steps": 8,
       "cfg": 5.0,
@@ -102,15 +144,34 @@
   "12": {
     "class_type": "VAEDecode",
     "inputs": {
-      "samples": ["11", 0],
-      "vae": ["3", 0]
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
     }
   },
   "13": {
     "class_type": "SaveImage",
     "inputs": {
-      "images": ["12", 0],
+      "images": [
+        "12",
+        0
+      ],
       "filename_prefix": "anima_node_usage_02_preset_apply"
+    }
+  },
+  "14": {
+    "class_type": "AnimaArtistStyleBalance",
+    "inputs": {
+      "style_balance": 0.35,
+      "advanced_options": [
+        "6",
+        0
+      ]
     }
   }
 }
