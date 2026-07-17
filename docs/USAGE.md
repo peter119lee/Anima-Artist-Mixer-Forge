@@ -939,6 +939,10 @@ Three nodes provide three levels of evidence, from free to definitive:
    list is a filtered snapshot, so a small or recent artist can be missing
    (the real tag `uof` is one such case) — confirm with a solo A/B before
    deleting a tag.
+   Since v27.6 the report also lists pairwise style-direction similarity
+   (cosine between artist-minus-base delta vectors): near-parallel pairs are
+   flagged `[VERY SIMILAR]` as likely redundant — a heuristic ranking, not a
+   verdict.
 2. **`AnimaArtistABVariants` (run level)** — turns one chain into a list of
    chain variants; ComfyUI's list fan-out then executes the downstream graph
    once per variant with the same seed. Wire `artist_chain` ->
@@ -947,6 +951,9 @@ Three nodes provide three levels of evidence, from free to definitive:
    one artist), `cumulative` (add artists one by one), `off_vs_full`.
    Weights, `@layers` and `%timing` routes stay attached to their artist in
    every variant. Each variant is a full sampling run — budget accordingly.
+   Since v27.6, wire the decoded images plus the `label` output into
+   `AnimaArtistContactSheet` to collect the whole series into one labeled
+   comparison grid in the same queue.
 3. **`AnimaArtistImpactMap` (image level)** — compares two same-seed renders.
    Outputs a visualization (`triptych` = `[A | B | change overlay]`,
    `overlay`, or raw `heatmap`), a report, and an `impact_score` (mean
