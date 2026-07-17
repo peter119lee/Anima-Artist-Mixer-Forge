@@ -594,7 +594,7 @@ class AnimaArtistOptions:
                 "layer_filter": str(layer_filter or ""),
                 "compatibility_mode": bool(compatibility_mode),
                 "max_batch_artists": int(max_batch_artists),
-            "artist_q_reuse": bool(artist_q_reuse),
+                "artist_q_reuse": bool(artist_q_reuse),
                 "low_vram_cache": bool(low_vram_cache),
                 "match_base_norm": bool(match_base_norm),
                 "anchor_base_norm_ref": bool(anchor_base_norm_ref),
